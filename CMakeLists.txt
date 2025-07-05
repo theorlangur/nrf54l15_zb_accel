@@ -13,8 +13,7 @@ target_sources(app PRIVATE
 
 target_include_directories(app PRIVATE include)
 target_include_directories(app PRIVATE submodules/esp_generic_lib/include)
-if (LLVM)
-        target_link_libraries(app PRIVATE c stdc++ supc++)
+if (${ZEPHYR_TOOLCHAIN_VARIANT} STREQUAL  "llvm")
         target_compile_options(app PRIVATE -fmacro-backtrace-limit=0)
         target_compile_options(app PUBLIC -D__cpp_concepts=202002L -Wno-builtin-macro-redefined -Wno-invalid-offsetof)
 endif()
