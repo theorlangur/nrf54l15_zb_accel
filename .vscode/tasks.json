@@ -4,19 +4,19 @@
         {
             "label": "Build",
             "type": "shell",
-            "command": "./e.sh cmake --build build",
+            "command": "./e.sh cmake --build build_llvm",
             "group": { "kind": "build" }
         },
         {
             "label": "West Build",
             "type": "shell",
-            "command": "./e.sh ./build-l.sh",
+            "command": "./e.sh ./build-llvm.sh",
             "group": { "kind": "build" }
         },
         {
             "label": "Flash",
             "type": "shell",
-            "command": "./e.sh west flash"
+            "command": "./e.sh west flash -d build_llvm"
         },
         {
             "label": "Flash OpenOCD",
@@ -39,38 +39,12 @@
             "command": "./reset.exp"
         },
         {
-            "label": "Setup RTT",
-            "type": "shell",
-            "command": "./config_rtt.exp"
-        },
-        {
             "label": "Kill Screen",
             "type": "shell",
             "options": {
                 "detached": true
             },
             "command": "killall cat"
-        },
-        {
-            "label": "Start OpenOCD",
-            "type": "shell",
-            "options": {
-                "detached": true
-            },
-            "command": "./ocd_cmsis_dap.sh"
-        },
-        {
-            "label": "Stop OpenOCD",
-            "type": "shell",
-            "options": {
-                "detached": true
-            },
-            "command": "killall openocd"
-        },
-        {
-            "label": "Screen",
-            "type": "shell",
-            "command": "./screen.sh"
         }
     ]
 }
