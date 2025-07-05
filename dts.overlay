@@ -1,0 +1,56 @@
+/ {
+	chosen {
+		ncs,zigbee-timer = &timer20;
+	};
+};
+
+// restore full RRAM and SRAM space - by default some parts are dedicated to FLRP
+//&cpuapp_rram {
+//	reg = <0x0 DT_SIZE_K(1524)>;
+//};
+//
+//&cpuapp_sram {
+//	reg = <0x20000000 DT_SIZE_K(256)>;
+//	ranges = <0x0 0x20000000  0x40000>;
+//};
+
+&pinctrl {
+   i2c0_default_alt: i2c0_default_alt {
+      group1 {
+         psels = <NRF_PSEL(TWIM_SDA, 1, 13)>,
+                 <NRF_PSEL(TWIM_SCL, 1, 14)>;
+      };
+   };
+   i2c0_sleep_alt: i2c0_sleep_alt {
+      group1 {
+         psels = <NRF_PSEL(TWIM_SDA, 1, 13)>,
+                 <NRF_PSEL(TWIM_SCL, 1, 14)>;
+         low-power-enable;
+      };
+   };
+};
+
+&i2c21 {
+    status = "okay";
+    pinctrl-0 = <&i2c0_default_alt>;
+    pinctrl-1 = <&i2c0_sleep_alt>;
+    pinctrl-names = "default", "sleep";
+
+    accel: lis2du12@19{
+        compatible="st,lis2du12";
+        reg = <0x19>;
+        label = "LIS2DU12";
+        /* mode 3 = 16G */
+        /* mode 2 = 8G */
+        /* mode 1 = 4G */
+        /* mode 0 = 2G */
+        accel-range = < 2 >;
+        /* odr=3 6Hz Ultra-Low-Power */
+        accel-odr = < 3 >;
+        status = "okay";
+    };
+};
+
+&timer20 {
+	status = "okay";
+};

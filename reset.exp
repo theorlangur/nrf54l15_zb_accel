@@ -1,0 +1,24 @@
+#!/usr/bin/expect -f
+
+# Set the address and port
+set address "localhost"
+set port "4444"
+
+# Spawn the telnet process
+spawn telnet $address $port
+
+# Wait for the prompt or any specific output
+expect "Open On-Chip Debugger"
+
+# Send the 'reset halt' command
+send "reset\r"
+
+# Wait for the next prompt or specific output
+#expect "xPSR"
+
+# Send the 'exit' command
+send "exit\r"
+
+# Wait for the process to close
+expect eof
+

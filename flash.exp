@@ -1,0 +1,33 @@
+#!/usr/bin/expect -f
+
+# Set the address and port
+set address "localhost"
+set port "4444"
+
+# Spawn the telnet process
+spawn telnet $address $port
+
+# Wait for the prompt or any specific output
+expect "Open On-Chip Debugger"
+
+send "reset halt\r"
+expect "xPSR"
+
+# Send the 'reset halt' command
+send "mww 0x5004b500 0x101\r"
+send "nrf54l.dap memaccess 12\r"
+send "load_image build/merged.hex\r"
+
+# Wait for the next prompt or specific output
+expect "downloaded"
+
+send "reset halt\r"
+
+expect "xPSR"
+
+# Send the 'exit' command
+send "exit\r"
+
+# Wait for the process to close
+expect eof
+

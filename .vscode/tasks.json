@@ -1,0 +1,76 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build",
+            "type": "shell",
+            "command": "./e.sh cmake --build build",
+            "group": { "kind": "build" }
+        },
+        {
+            "label": "West Build",
+            "type": "shell",
+            "command": "./e.sh ./build-l.sh",
+            "group": { "kind": "build" }
+        },
+        {
+            "label": "Flash",
+            "type": "shell",
+            "command": "./e.sh west flash"
+        },
+        {
+            "label": "Flash OpenOCD",
+            "type": "shell",
+            "command": "./flash.exp"
+        },
+        {
+            "label": "Bootloader Flash OpenOCD",
+            "type": "shell",
+            "command": "./flash_boot.exp"
+        },
+        {
+            "label": "Reset Halt OpenOCD",
+            "type": "shell",
+            "command": "./reset_halt.exp"
+        },
+        {
+            "label": "Reset OpenOCD",
+            "type": "shell",
+            "command": "./reset.exp"
+        },
+        {
+            "label": "Setup RTT",
+            "type": "shell",
+            "command": "./config_rtt.exp"
+        },
+        {
+            "label": "Kill Screen",
+            "type": "shell",
+            "options": {
+                "detached": true
+            },
+            "command": "killall cat"
+        },
+        {
+            "label": "Start OpenOCD",
+            "type": "shell",
+            "options": {
+                "detached": true
+            },
+            "command": "./ocd_cmsis_dap.sh"
+        },
+        {
+            "label": "Stop OpenOCD",
+            "type": "shell",
+            "options": {
+                "detached": true
+            },
+            "command": "killall openocd"
+        },
+        {
+            "label": "Screen",
+            "type": "shell",
+            "command": "./screen.sh"
+        }
+    ]
+}
