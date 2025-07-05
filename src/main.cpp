@@ -249,8 +249,8 @@ int main(void)
 	power_down_unused_ram();
     }
 
-    printk("Sleeping 15 seconds\r\n");
-    k_sleep(K_SECONDS(15));
+    //printk("Sleeping 15 seconds\r\n");
+    //k_sleep(K_SECONDS(15));
 
     printk("Main: before zigbee enable\r\n");
     zigbee_enable();
