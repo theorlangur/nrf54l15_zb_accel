@@ -1,0 +1,3 @@
+[submodule "submodules/esp_generic_lib"]
+	path = submodules/esp_generic_lib
+	url = git@github.com:theorlangur/esp_generic_lib.git
