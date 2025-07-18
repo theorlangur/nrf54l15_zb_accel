@@ -9,13 +9,30 @@
             "name": "Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build_dk/nrf54l15_zigbee/zephyr/zephyr.elf",
+            "program": "${workspaceFolder}/build_ezurio_llvm/nrf54l15_zigbee/zephyr/zephyr.elf",
             "cwd": "${workspaceFolder}",
-            "miDebuggerServerAddress": "localhost:2331",
+            "miDebuggerPath": "/home/theorlangur/ncs/toolchains/7cbc0036f4/opt/zephyr-sdk/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb",
+            "miDebuggerServerAddress": "localhost:44477",
             "useExtendedRemote": true,
             "stopAtConnect": true,
             "stopAtEntry": true,
             "MIMode": "gdb"
+        },
+        {
+            "name": "Launch OCD",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build_ezurio/nrf54l15_zigbee/zephyr/zephyr.elf",
+            "cwd": "${workspaceFolder}",
+            "miDebuggerServerAddress": "localhost:3333",
+            "useExtendedRemote": true,
+            "stopAtConnect": true,
+            "stopAtEntry": true,
+            "MIMode": "gdb"
+        },
+        {
+            "name": "Launch NRF",
+            "type": "nrf-connect",
         }
     ]
 }

@@ -27,7 +27,7 @@
 
 #include "zb/zb_alarm.hpp"
 
-constexpr bool kPowerSaving = false;
+constexpr bool kPowerSaving = true;
 
 /* Manufacturer name (32 bytes). */
 #define INIT_BASIC_MANUF_NAME      "TheOrlangur"
@@ -75,13 +75,13 @@ static constinit bulb_device_ctx_t dev_ctx{
 	/*.model =*/ INIT_BASIC_MODEL_ID,
     },
 	.poll_ctrl = {
-	    .check_in_interval = 8_min_to_qs,
+	    .check_in_interval = 2_min_to_qs,
 	    .long_poll_interval = 60_min_to_qs,
 	    //.short_poll_interval = 1_sec_to_qs,
 	},
 };
 
-constinit static auto zb_ctx = zb::make_device(
+static auto zb_ctx = zb::make_device(
 	zb::make_ep_args<{.ep=kACCEL_EP, .dev_id=kDEV_ID, .dev_ver=1}>(
 	    dev_ctx.basic_attr
 	    , dev_ctx.battery_attr
@@ -109,12 +109,6 @@ constinit static auto &zb_ep = zb_ctx.ep<kACCEL_EP>();
      */
     static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
-void print_uart(const char *buf)
-{
-    while(*buf)
-	uart_poll_out(uart_dev, *buf++);
-}
-
 struct accel_val
 {
     sensor_value x;
@@ -131,24 +125,37 @@ void udpate_accel_values(uint8_t)
 	sensor_sample_fetch(accel_dev);
 	accel_val acc;
 	sensor_channel_get(accel_dev, SENSOR_CHAN_ACCEL_XYZ, &acc.x);
-	zb_ep.attr<kAttrTempValue>() = zb::zb_zcl_temp_t::FromC(float(acc.z.val1) + float(acc.z.val2) / 1000'000.f);
-	//printk("Accel X: %d; Y: %d; Z: %d;\r\n", acc.x.val1, acc.y.val1, acc.z.val1);
+	static float g_delta = 0;
+	zb_ep.attr<kAttrTempValue>() = zb::zb_zcl_temp_t::FromC(float(acc.z.val1) + g_delta + float(acc.z.val2) / 1000'000.f);
+	printk("Accel X: %d; Y: %d; Z: %d;\r\n", acc.x.val1, acc.y.val1, acc.z.val1);
+	printk("Delta: %.2f\r\n", g_delta);
+	g_delta += 1.f;
     }else
     {
-	zb_ep.attr<kAttrTempValue>() = 0;
+	static float g_inv_delta = 0;
+	zb_ep.attr<kAttrTempValue>() = zb::zb_zcl_temp_t::FromC(g_inv_delta);;
+	g_inv_delta -= 1.f;
+	printk("Accel not ready");
+	printk("Inv Delta: %.2f\r\n", g_inv_delta);
     }
 }
+
+//zb::ZbTimerExt16 g_PeriodicAccel;
 
 void on_zigbee_start()
 {
     printk("on_zigbee_start\r\n");
     zb_zcl_poll_control_start(0, kACCEL_EP);
     zb_zcl_poll_controll_register_cb(&udpate_accel_values);
+    //g_PeriodicAccel.Setup([]{
+    // udpate_accel_values(0);
+    // return true;
+    // }, 10000);
 
     //   if (dev_ctx.poll_ctrl.long_poll_interval != 0xffffffff)
     //zb_zdo_pim_set_long_poll_interval(dev_ctx.poll_ctrl.long_poll_interval * 1000 / 4);
     //else
-    zb_zdo_pim_set_long_poll_interval(1000 * 5);
+    zb_zdo_pim_set_long_poll_interval(1000 * 60 * 60);
 
     //should be there already
     udpate_accel_values(0);
@@ -165,39 +172,39 @@ void on_can_sleep()
  */
 void zboss_signal_handler(zb_bufid_t bufid)
 {
-	//zb::BufPtr b{bufid};
         zb_zdo_app_signal_hdr_t *pHdr;
         auto signalId = zb_get_app_signal(bufid, &pHdr);
         zb_ret_t status = zb_buf_get_status(bufid);
 	printk("zboss: sig handler, sigid %d; status: %d\r\n", signalId, status);
-	//       switch(signalId)
-	//       {
-	//    case ZB_ZDO_SIGNAL_LEAVE:
-	//	{
-	//	    zb_zcl_poll_control_stop(); 
-	//	    k_sleep(K_MSEC(2100));
-	//	    sys_reboot(SYS_REBOOT_COLD);
-	//	}
-	//	break;
-	//    case ZB_BDB_SIGNAL_DEVICE_REBOOT:
-	//    case ZB_BDB_SIGNAL_STEERING:
-	//	on_zigbee_start();
-	//	break;
-	//    case ZB_COMMON_SIGNAL_CAN_SLEEP:
-	//	break;
-	//}
-	//auto ret = zigbee_default_signal_handler(bufid);
-	   auto ret = zb::tpl_signal_handler<zb::sig_handlers_t{
-	.on_leave = +[]{ 
-	    zb_zcl_poll_control_stop(); 
-	    k_sleep(K_MSEC(2100));
-	    sys_reboot(SYS_REBOOT_COLD);
-	},
-	    //.on_error = []{ led::show_pattern(led::kPATTERN_3_BLIPS_NORMED, 1000); },
-	    .on_dev_reboot = on_zigbee_start,
-	    .on_steering = on_zigbee_start,
-	    .on_can_sleep = &on_can_sleep/*zb_sleep_now*/,
-	   }>(bufid);
+	zb::BufPtr b{bufid};
+	       switch(signalId)
+	       {
+	    case ZB_ZDO_SIGNAL_LEAVE:
+		{
+		    zb_zcl_poll_control_stop(); 
+		    k_sleep(K_MSEC(2100));
+		    sys_reboot(SYS_REBOOT_COLD);
+		}
+		break;
+	    case ZB_BDB_SIGNAL_DEVICE_REBOOT:
+	    case ZB_BDB_SIGNAL_STEERING:
+		on_zigbee_start();
+		break;
+	    case ZB_COMMON_SIGNAL_CAN_SLEEP:
+		break;
+	}
+	auto ret = zigbee_default_signal_handler(bufid);
+	//   auto ret = zb::tpl_signal_handler<zb::sig_handlers_t{
+	//.on_leave = +[]{ 
+	//    zb_zcl_poll_control_stop(); 
+	//    k_sleep(K_MSEC(2100));
+	//    sys_reboot(SYS_REBOOT_COLD);
+	//},
+	//    //.on_error = []{ led::show_pattern(led::kPATTERN_3_BLIPS_NORMED, 1000); },
+	//    .on_dev_reboot = on_zigbee_start,
+	//    .on_steering = on_zigbee_start,
+	//    .on_can_sleep = &zb_sleep_now,
+	//   }>(bufid);
     const uint32_t LOCAL_ERR_CODE = (uint32_t) (-ret);	
     if (LOCAL_ERR_CODE != RET_OK) {				
 	zb_osif_abort();				
@@ -214,10 +221,10 @@ int main(void)
     if (!gpio_is_ready_dt(&led)) {
 	return 0;
     }
-    ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
-    if (ret < 0) {
-	return 0;
-    }
+	//   ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+	//   if (ret < 0) {
+	//return 0;
+	//   }
 
     printk("Main: before settings init\r\n");
     int err = settings_subsys_init();

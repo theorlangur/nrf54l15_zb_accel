@@ -16,7 +16,7 @@ expect "xPSR"
 # Send the 'reset halt' command
 send "mww 0x5004b500 0x101\r"
 send "nrf54l.dap memaccess 12\r"
-send "load_image build/merged.hex\r"
+send "load_image build_ezurio_gcc/merged.hex\r"
 
 # Wait for the next prompt or specific output
 expect "downloaded"

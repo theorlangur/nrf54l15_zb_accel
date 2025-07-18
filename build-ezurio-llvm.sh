@@ -1,7 +1,9 @@
 #!/bin/bash
 # west build --build-dir build . --pristine --sysbuild --board orlangur_ezurio_nrf54l15/nrf54l15/cpuapp -- -DBOARD_ROOT=$(pwd)/.. -DCONF_FILE=prj.conf --toolchain ${ZEPHYR_SDK_CMAKE_TOOLCHAIN_LLVM_PICO}
 # west build --build-dir build_conv . --pristine --board nrf54l15dk/nrf54l15/cpuapp -- -DCONF_FILE=prj.conf --toolchain ${ZEPHYR_SDK_CMAKE_TOOLCHAIN_LLVM_PICO}
-west build --build-dir build_llvm . --pristine --board nrf54l15dk/nrf54l15/cpuapp -- \
+west build --build-dir build_ezurio_llvm . --pristine \
+    --board orlangur_ezurio_nrf54l15/nrf54l15/cpuapp -- \
+    -DBOARD_ROOT=~/myapps/cpp/nrf \
     -DCONF_FILE=prj.conf \
     -DZEPHYR_TOOLCHAIN_VARIANT=llvm \
     -DCONFIG_LLVM_USE_LLD=y \

@@ -2,15 +2,15 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build",
+            "label": "Build Ezurio LLVM",
             "type": "shell",
-            "command": "./e.sh cmake --build build_llvm",
+            "command": "./llvm.sh cmake --build build_ezurio_llvm",
             "group": { "kind": "build" }
         },
         {
-            "label": "West Build",
+            "label": "West Build Ezurio LLVM",
             "type": "shell",
-            "command": "./e.sh ./build-llvm.sh",
+            "command": "./llvm.sh ./build-ezurio-llvm.sh",
             "group": { "kind": "build" }
         },
         {
