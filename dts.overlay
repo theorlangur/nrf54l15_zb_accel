@@ -31,7 +31,7 @@
 };
 
 &i2c21 {
-    status = "disabled";
+    status = "okay";
     pinctrl-0 = <&i2c0_default_alt>;
     pinctrl-1 = <&i2c0_sleep_alt>;
     pinctrl-names = "default", "sleep";
@@ -47,7 +47,7 @@
         accel-range = < 2 >;
         /* odr=3 6Hz Ultra-Low-Power */
         accel-odr = < 3 >;
-        status = "disabled";
+        status = "okay";
     };
 };
 
