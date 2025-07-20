@@ -22,8 +22,10 @@
 #include "zb/zb_main.hpp"
 #include "zb/zb_std_cluster_desc.hpp"
 #include "zb/zb_power_config_cluster_desc.hpp"
-#include "zb/zb_temp_cluster_desc.hpp"
 #include "zb/zb_poll_ctrl_cluster_desc.hpp"
+
+#include "zb/zb_accel_cluster_desc.hpp"
+#include "zb/zb_status_cluster_desc.hpp"
 
 #include "zb/zb_alarm.hpp"
 
@@ -54,10 +56,14 @@ typedef struct {
     zb::zb_zcl_basic_names_t basic_attr;
     zb::zb_zcl_power_cfg_battery_info_t battery_attr;
     zb::zb_zcl_poll_ctrl_basic_t poll_ctrl;
-    zb::zb_zcl_temp_basic_t temp_attr;
+    zb::zb_zcl_accel_basic_t accel_attr;
+    zb::zb_zcl_status_t status_attr;
 } bulb_device_ctx_t;
 
-constexpr auto kAttrTempValue = &zb::zb_zcl_temp_basic_t::measured_value;
+constexpr auto kAttrX = &zb::zb_zcl_accel_basic_t::x;
+constexpr auto kAttrY = &zb::zb_zcl_accel_basic_t::y;
+constexpr auto kAttrZ = &zb::zb_zcl_accel_basic_t::z;
+constexpr auto kAttrStatus1 = &zb::zb_zcl_status_t::status1;
 constexpr auto kAttrBattVoltage = &zb::zb_zcl_power_cfg_battery_info_t::batt_voltage;
 constexpr auto kAttrBattPercentage = &zb::zb_zcl_power_cfg_battery_info_t::batt_percentage_remaining;
 
@@ -79,6 +85,11 @@ static constinit bulb_device_ctx_t dev_ctx{
 	    .long_poll_interval = 60_min_to_qs,
 	    //.short_poll_interval = 1_sec_to_qs,
 	},
+	.accel_attr = {
+	    .x = 0,
+	    .y = 0,
+	    .z = 0
+	}
 };
 
 constinit static auto zb_ctx = zb::make_device(
@@ -86,7 +97,8 @@ constinit static auto zb_ctx = zb::make_device(
 	    dev_ctx.basic_attr
 	    , dev_ctx.battery_attr
 	    , dev_ctx.poll_ctrl
-	    , dev_ctx.temp_attr
+	    , dev_ctx.accel_attr
+	    , dev_ctx.status_attr
 	    )
 	);
 
@@ -99,15 +111,15 @@ constinit static auto &zb_ep = zb_ctx.ep<kACCEL_EP>();
     /* The devicetree node identifier for the "led0" alias. */
 #define LED0_NODE DT_ALIAS(led0)
 
-#define UART_DEVICE_NODE DT_CHOSEN(zephyr_console)
-    static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
+//#define UART_DEVICE_NODE DT_CHOSEN(zephyr_console)
+//static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
 
-    static const struct device *const accel_dev = DEVICE_DT_GET(DT_NODELABEL(accel));
-    /*
-     * A build error on this line means your board is unsupported.
-     * See the sample documentation for information on how to fix this.
-     */
-    static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
+static const struct device *const accel_dev = DEVICE_DT_GET(DT_NODELABEL(accel));
+/*
+ * A build error on this line means your board is unsupported.
+ * See the sample documentation for information on how to fix this.
+ */
+static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
 struct accel_val
 {
@@ -125,44 +137,38 @@ void udpate_accel_values(uint8_t)
 	sensor_sample_fetch(accel_dev);
 	accel_val acc;
 	sensor_channel_get(accel_dev, SENSOR_CHAN_ACCEL_XYZ, &acc.x);
-	static float g_delta = 0;
-	zb_ep.attr<kAttrTempValue>() = zb::zb_zcl_temp_t::FromC(float(acc.z.val1) + g_delta + float(acc.z.val2) / 1000'000.f);
+	zb_ep.attr<kAttrX>() = float(acc.x.val1) + float(acc.x.val2) / 1000'000.f;
+	zb_ep.attr<kAttrY>() = float(acc.y.val1) + float(acc.y.val2) / 1000'000.f;
+	zb_ep.attr<kAttrZ>() = float(acc.z.val1) + float(acc.z.val2) / 1000'000.f;
+	zb_ep.attr<kAttrStatus1>() = 0;
 	printk("Accel X: %d; Y: %d; Z: %d;\r\n", acc.x.val1, acc.y.val1, acc.z.val1);
-	printk("Delta: %.2lf\r\n", (double)g_delta);
-	g_delta += 1.f;
     }else
     {
-	static float g_inv_delta = 0;
-	zb_ep.attr<kAttrTempValue>() = zb::zb_zcl_temp_t::FromC(g_inv_delta);;
-	g_inv_delta -= 1.f;
-	printk("Accel not ready");
-	printk("Inv Delta: %.2lf\r\n", (double)g_inv_delta);
+	zb_ep.attr<kAttrStatus1>() = -1;
+	//printk("Accel not ready");
+	//printk("Inv Delta: %.2lf\r\n", (double)g_inv_delta);
     }
 }
 
-//zb::ZbTimerExt16 g_PeriodicAccel;
+zb::ZbTimerExt16 g_PeriodicAccel;
 
 void on_zigbee_start()
 {
     printk("on_zigbee_start\r\n");
     zb_zcl_poll_control_start(0, kACCEL_EP);
     zb_zcl_poll_controll_register_cb(&udpate_accel_values);
-    //g_PeriodicAccel.Setup([]{
-    // udpate_accel_values(0);
-    // return true;
-    // }, 10000);
+    g_PeriodicAccel.Setup([]{ udpate_accel_values(0); return true; }, 10000);
 
-    //   if (dev_ctx.poll_ctrl.long_poll_interval != 0xffffffff)
-    //zb_zdo_pim_set_long_poll_interval(dev_ctx.poll_ctrl.long_poll_interval * 1000 / 4);
-    //else
-    zb_zdo_pim_set_long_poll_interval(1000 * 60 * 60);
+    if constexpr (kPowerSaving)
+    {
+	if (dev_ctx.poll_ctrl.long_poll_interval != 0xffffffff)
+	    zb_zdo_pim_set_long_poll_interval(dev_ctx.poll_ctrl.long_poll_interval * 1000 / 4);
+    }
+    else
+	zb_zdo_pim_set_long_poll_interval(1000 * 10);
 
     //should be there already
     udpate_accel_values(0);
-}
-
-void on_can_sleep()
-{ 
 }
 
 /**@brief Zigbee stack event handler.
@@ -176,25 +182,7 @@ void zboss_signal_handler(zb_bufid_t bufid)
         auto signalId = zb_get_app_signal(bufid, &pHdr);
         zb_ret_t status = zb_buf_get_status(bufid);
 	printk("zboss: sig handler, sigid %d; status: %d\r\n", signalId, status);
-	//zb::BufPtr b{bufid};
-	//       switch(signalId)
-	//       {
-	//    case ZB_ZDO_SIGNAL_LEAVE:
-	//	{
-	//	    zb_zcl_poll_control_stop(); 
-	//	    k_sleep(K_MSEC(2100));
-	//	    sys_reboot(SYS_REBOOT_COLD);
-	//	}
-	//	break;
-	//    case ZB_BDB_SIGNAL_DEVICE_REBOOT:
-	//    case ZB_BDB_SIGNAL_STEERING:
-	//	on_zigbee_start();
-	//	break;
-	//    case ZB_COMMON_SIGNAL_CAN_SLEEP:
-	//	break;
-	//}
-	//auto ret = zigbee_default_signal_handler(bufid);
-	   auto ret = zb::tpl_signal_handler<zb::sig_handlers_t{
+	auto ret = zb::tpl_signal_handler<zb::sig_handlers_t{
 	.on_leave = +[]{ 
 	    zb_zcl_poll_control_stop(); 
 	    k_sleep(K_MSEC(2100));
@@ -255,9 +243,6 @@ int main(void)
     {
 	power_down_unused_ram();
     }
-
-    //printk("Sleeping 15 seconds\r\n");
-    //k_sleep(K_SECONDS(15));
 
     printk("Main: before zigbee enable\r\n");
     zigbee_enable();
