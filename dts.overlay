@@ -47,6 +47,8 @@
         accel-range = < 2 >;
         /* odr=3 6Hz Ultra-Low-Power */
         accel-odr = < 3 >;
+        drdy-pin = < 2 >;
+        int2-gpios = <&gpio1 12 GPIO_ACTIVE_HIGH>;
         status = "okay";
     };
 };

@@ -29,6 +29,8 @@
 
 #include "zb/zb_alarm.hpp"
 
+#include <zephyr/drivers/sensor/lis2du12.h>
+
 constexpr bool kPowerSaving = true;
 
 /* Manufacturer name (32 bytes). */
@@ -128,6 +130,38 @@ struct accel_val
     sensor_value z;
 };
 
+static sensor_trigger g_TapTrigger{.type = SENSOR_TRIG_TAP, .chan = SENSOR_CHAN_ACCEL_XYZ};
+void on_tap(const struct device *dev, const struct sensor_trigger *trigger)
+{
+    printk("tap detected\r\n");
+    lis2du12_all_sources_t src;
+    lis2du12_get_all_sources(dev, &src);
+    printk("tap sign: %d\r\n", src.tap_sign);
+    printk("tap X: %d\r\n", src.tap_x);
+    printk("tap Y: %d\r\n", src.tap_y);
+    printk("tap Z: %d\r\n", src.tap_z);
+}
+
+static sensor_trigger g_DbgTapTrigger{.type = SENSOR_TRIG_DOUBLE_TAP, .chan = SENSOR_CHAN_ACCEL_XYZ};
+void on_double_tap(const struct device *dev, const struct sensor_trigger *trigger)
+{
+    printk("double tap detected\r\n");
+}
+
+static sensor_trigger g_6DTrigger{.type = (sensor_trigger_type)LIS2DU12_TRIG_6D, .chan = SENSOR_CHAN_ACCEL_XYZ};
+void on_6d_event(const struct device *dev, const struct sensor_trigger *trigger)
+{
+    printk("6D event detected\r\n");
+    lis2du12_all_sources_t src;
+    lis2du12_get_all_sources(dev, &src);
+    printk("6D X low: %d\r\n", src.six_d_xl);
+    printk("6D X high: %d\r\n", src.six_d_xh);
+    printk("6D Y low: %d\r\n", src.six_d_yl);
+    printk("6D Y high: %d\r\n", src.six_d_yh);
+    printk("6D Z low: %d\r\n", src.six_d_zl);
+    printk("6D Z high: %d\r\n", src.six_d_zh);
+}
+
 #if defined (ZB_ON)
 void udpate_accel_values(uint8_t)
 {
@@ -213,6 +247,28 @@ int main(void)
 	//   if (ret < 0) {
 	//return 0;
 	//   }
+
+    if (device_is_ready(accel_dev))
+    {
+	//printk("================\r\nAccel State before config:\r\n================\r\n");
+	//lis2du12_dump_registers(accel_dev);
+	//printk("================\r\nEND\r\n================\r\n");
+	ret = sensor_trigger_set(accel_dev, &g_TapTrigger, &on_tap);
+	if (ret != 0) printk("Failed to set trigger on tap: %d\r\n", ret);
+	else printk("Set trigger on tap\r\n");
+	ret = sensor_trigger_set(accel_dev, &g_DbgTapTrigger, &on_double_tap);
+	if (ret != 0) printk("Failed to set trigger on double tap: %d\r\n", ret);
+	else printk("Set trigger on double tap\r\n");
+	ret = sensor_trigger_set(accel_dev, &g_6DTrigger, &on_6d_event);
+	if (ret != 0) printk("Failed to set trigger on 6d: %d\r\n", ret);
+	else printk("Set trigger on 6d\r\n");
+	printk("================\r\nAccel State after config:\r\n================\r\n");
+	lis2du12_dump_registers(accel_dev);
+	printk("================\r\nEND\r\n================\r\n");
+    }else
+    {
+	printk("Accelerometer is not ready\r\n");
+    }
 
     printk("Main: before settings init\r\n");
     int err = settings_subsys_init();
