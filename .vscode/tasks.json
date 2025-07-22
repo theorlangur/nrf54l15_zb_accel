@@ -14,6 +14,12 @@
             "group": { "kind": "build" }
         },
         {
+            "label": "West Build Ezurio LLVM Log",
+            "type": "shell",
+            "command": "./llvm.sh ./build-ezurio-llvm-log.sh",
+            "group": { "kind": "build" }
+        },
+        {
             "label": "Flash",
             "type": "shell",
             "command": "./e.sh west flash -d build_llvm"
