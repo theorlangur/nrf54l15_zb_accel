@@ -130,7 +130,10 @@ struct accel_val
     sensor_value z;
 };
 
-static sensor_trigger g_TapTrigger{.type = SENSOR_TRIG_TAP, .chan = SENSOR_CHAN_ACCEL_XYZ};
+static lis2du12_trigger g_TapTrigger{ 
+    .trig={.type = SENSOR_TRIG_TAP, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
+    .tap_cfg = {.x_threshold = 1, .priority = LIS2DU12_ZXY}
+};
 void on_tap(const struct device *dev, const struct sensor_trigger *trigger)
 {
     printk("tap detected\r\n");
@@ -142,7 +145,10 @@ void on_tap(const struct device *dev, const struct sensor_trigger *trigger)
     printk("tap Z: %d\r\n", src.tap_z);
 }
 
-static sensor_trigger g_DbgTapTrigger{.type = SENSOR_TRIG_DOUBLE_TAP, .chan = SENSOR_CHAN_ACCEL_XYZ};
+static lis2du12_trigger g_DbgTapTrigger{ 
+    .trig={.type = SENSOR_TRIG_DOUBLE_TAP, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
+    .tap_cfg = {.ignore = 1}
+};
 void on_double_tap(const struct device *dev, const struct sensor_trigger *trigger)
 {
     printk("double tap detected\r\n");
@@ -253,10 +259,10 @@ int main(void)
 	//printk("================\r\nAccel State before config:\r\n================\r\n");
 	//lis2du12_dump_registers(accel_dev);
 	//printk("================\r\nEND\r\n================\r\n");
-	ret = sensor_trigger_set(accel_dev, &g_TapTrigger, &on_tap);
+	ret = sensor_trigger_set(accel_dev, &g_TapTrigger.trig, &on_tap);
 	if (ret != 0) printk("Failed to set trigger on tap: %d\r\n", ret);
 	else printk("Set trigger on tap\r\n");
-	ret = sensor_trigger_set(accel_dev, &g_DbgTapTrigger, &on_double_tap);
+	ret = sensor_trigger_set(accel_dev, &g_DbgTapTrigger.trig, &on_double_tap);
 	if (ret != 0) printk("Failed to set trigger on double tap: %d\r\n", ret);
 	else printk("Set trigger on double tap\r\n");
 	ret = sensor_trigger_set(accel_dev, &g_6DTrigger, &on_6d_event);
