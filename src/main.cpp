@@ -130,9 +130,18 @@ struct accel_val
     sensor_value z;
 };
 
+static lis2du12_trigger g_WakeUpTrigger{ 
+    .trig={.type = (enum sensor_trigger_type)LIS2DU12_TRIG_WAKE_UP, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
+    .wake_cfg = {.z_enable = 1, .threshold = 1}
+};
+void on_wakeup(const struct device *dev, const struct sensor_trigger *trigger)
+{
+    printk("wake up detected\r\n");
+}
+
 static lis2du12_trigger g_TapTrigger{ 
     .trig={.type = SENSOR_TRIG_TAP, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
-    .tap_cfg = {.x_threshold = 1, .priority = LIS2DU12_ZXY}
+    .tap_cfg = {.z_threshold = 1, .priority = LIS2DU12_ZXY}
 };
 void on_tap(const struct device *dev, const struct sensor_trigger *trigger)
 {
@@ -268,6 +277,9 @@ int main(void)
 	ret = sensor_trigger_set(accel_dev, &g_6DTrigger, &on_6d_event);
 	if (ret != 0) printk("Failed to set trigger on 6d: %d\r\n", ret);
 	else printk("Set trigger on 6d\r\n");
+	ret = sensor_trigger_set(accel_dev, &g_WakeUpTrigger.trig, &on_wakeup);
+	if (ret != 0) printk("Failed to set trigger on wakeup: %d\r\n", ret);
+	else printk("Set trigger on wakeup\r\n");
 	printk("================\r\nAccel State after config:\r\n================\r\n");
 	lis2du12_dump_registers(accel_dev);
 	printk("================\r\nEND\r\n================\r\n");
