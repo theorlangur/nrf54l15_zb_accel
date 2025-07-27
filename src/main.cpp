@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#define ZB_ON
 
 //#include <iostream>
 #include <memory>
@@ -18,7 +17,6 @@
 #include <ram_pwrdn.h>
 
 //#define ALARM_LIST_LOCK_TYPE thread::DummyLock
-#if defined (ZB_ON)
 #include "zb/zb_main.hpp"
 #include "zb/zb_std_cluster_desc.hpp"
 #include "zb/zb_power_config_cluster_desc.hpp"
@@ -106,7 +104,6 @@ constinit static auto zb_ctx = zb::make_device(
 
 constinit static auto &zb_ep = zb_ctx.ep<kACCEL_EP>();
 
-#endif
     /* 1000 msec = 1 sec */
 #define SLEEP_TIME_MS   2000
 
@@ -123,6 +120,18 @@ static const struct device *const accel_dev = DEVICE_DT_GET(DT_NODELABEL(accel))
  */
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
+struct accel_settings
+{
+    uint32_t detect_flip_x    : 1;
+    uint32_t detect_flip_y    : 1;
+    uint32_t detect_flip_z    : 1;
+    uint32_t regular_readings : 1;
+    uint32_t unused           : 28;
+};
+
+constinit static accel_settings g_Settings{};
+constexpr float kFlipThreshold = 1.f;
+
 struct accel_val
 {
     sensor_value x;
@@ -130,54 +139,94 @@ struct accel_val
     sensor_value z;
 };
 
-static lis2du12_trigger g_WakeUpTrigger{ 
-    .trig={.type = (enum sensor_trigger_type)LIS2DU12_TRIG_WAKE_UP, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
-    .wake_cfg = {.z_enable = 1, .threshold = 1}
+//static lis2du12_trigger g_WakeUpTrigger{ 
+//    .trig={.type = (enum sensor_trigger_type)LIS2DU12_TRIG_WAKE_UP, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
+//    .wake_cfg = {.z_enable = 0, .threshold = 1}
+//};
+//void on_wakeup(const struct device *dev, const struct sensor_trigger *trigger)
+//{
+//    printk("wake up detected\r\n");
+//    sensor_sample_fetch(accel_dev);
+//    accel_val acc;
+//    sensor_channel_get(accel_dev, SENSOR_CHAN_ACCEL_XYZ, &acc.x);
+//}
+
+static lis2du12_trigger g_SleepTrigger{ 
+    .trig={.type = (enum sensor_trigger_type)LIS2DU12_TRIG_SLEEP_CHANGE, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
+    //.wake_cfg = {.z_enable = 0, .threshold = 1}
 };
-void on_wakeup(const struct device *dev, const struct sensor_trigger *trigger)
+void on_sleep(const struct device *dev, const struct sensor_trigger *trigger)
 {
-    printk("wake up detected\r\n");
+    printk("sleep state detected\r\n");
+    sensor_sample_fetch(accel_dev);
+    accel_val acc;
+    sensor_channel_get(accel_dev, SENSOR_CHAN_ACCEL_XYZ, &acc.x);
+    float x, y, z;
+    x = float(acc.x.val1) + float(acc.x.val2) / 1000'000.f;
+    y = float(acc.y.val1) + float(acc.y.val2) / 1000'000.f;
+    z = float(acc.z.val1) + float(acc.z.val2) / 1000'000.f;
+
+    if (g_Settings.detect_flip_x)
+    {
+	bool diff = std::abs(x - dev_ctx.accel_attr.x) > kFlipThreshold;
+	if (diff)
+	{
+	    //notify x-flip
+	}
+    }
+
+    if (g_Settings.detect_flip_y)
+    {
+	bool diff = std::abs(y - dev_ctx.accel_attr.y) > kFlipThreshold;
+	if (diff)
+	{
+	    //notify y-flip
+	}
+    }
+
+    if (g_Settings.detect_flip_z)
+    {
+	bool diff = std::abs(z - dev_ctx.accel_attr.z) > kFlipThreshold;
+	if (diff)
+	{
+	    //notify z-flip
+	}
+    }
+
+
+    zb_ep.attr<kAttrX>() = x;
+    zb_ep.attr<kAttrY>() = y;
+    zb_ep.attr<kAttrZ>() = z;
 }
 
-static lis2du12_trigger g_TapTrigger{ 
-    .trig={.type = SENSOR_TRIG_TAP, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
-    .tap_cfg = {.z_threshold = 1, .priority = LIS2DU12_ZXY}
-};
-void on_tap(const struct device *dev, const struct sensor_trigger *trigger)
+void reconfigure_interrupts()
 {
-    printk("tap detected\r\n");
-    lis2du12_all_sources_t src;
-    lis2du12_get_all_sources(dev, &src);
-    printk("tap sign: %d\r\n", src.tap_sign);
-    printk("tap X: %d\r\n", src.tap_x);
-    printk("tap Y: %d\r\n", src.tap_y);
-    printk("tap Z: %d\r\n", src.tap_z);
+	//   if (   (g_WakeUpTrigger.wake_cfg.x_enable != g_Settings.detect_flip_x)
+	//|| (g_WakeUpTrigger.wake_cfg.y_enable != g_Settings.detect_flip_y)
+	//|| (g_WakeUpTrigger.wake_cfg.z_enable != g_Settings.detect_flip_z)
+	//      )
+    {
+	//g_WakeUpTrigger.wake_cfg.x_enable = g_Settings.detect_flip_x;
+	//g_WakeUpTrigger.wake_cfg.y_enable = g_Settings.detect_flip_y;
+	//g_WakeUpTrigger.wake_cfg.z_enable = g_Settings.detect_flip_z;
+
+	int ret;
+	if (g_Settings.detect_flip_x || g_Settings.detect_flip_y || g_Settings.detect_flip_z)
+	{
+	    //ret = sensor_trigger_set(accel_dev, &g_WakeUpTrigger.trig, &on_wakeup);
+	    //if (ret != 0) printk("Failed to set wake up trigger");
+	    ret = sensor_trigger_set(accel_dev, &g_SleepTrigger.trig, &on_sleep);
+	    if (ret != 0) printk("Failed to set sleep trigger");
+	}else
+	{
+	    //ret = sensor_trigger_set(accel_dev, &g_WakeUpTrigger.trig, nullptr);
+	    //if (ret != 0) printk("Failed to remove wake up trigger");
+	    ret = sensor_trigger_set(accel_dev, &g_SleepTrigger.trig, nullptr);
+	    if (ret != 0) printk("Failed to remove sleep trigger");
+	}
+    }
 }
 
-static lis2du12_trigger g_DbgTapTrigger{ 
-    .trig={.type = SENSOR_TRIG_DOUBLE_TAP, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
-    .tap_cfg = {.ignore = 1}
-};
-void on_double_tap(const struct device *dev, const struct sensor_trigger *trigger)
-{
-    printk("double tap detected\r\n");
-}
-
-static sensor_trigger g_6DTrigger{.type = (sensor_trigger_type)LIS2DU12_TRIG_6D, .chan = SENSOR_CHAN_ACCEL_XYZ};
-void on_6d_event(const struct device *dev, const struct sensor_trigger *trigger)
-{
-    printk("6D event detected\r\n");
-    lis2du12_all_sources_t src;
-    lis2du12_get_all_sources(dev, &src);
-    printk("6D X low: %d\r\n", src.six_d_xl);
-    printk("6D X high: %d\r\n", src.six_d_xh);
-    printk("6D Y low: %d\r\n", src.six_d_yl);
-    printk("6D Y high: %d\r\n", src.six_d_yh);
-    printk("6D Z low: %d\r\n", src.six_d_zl);
-    printk("6D Z high: %d\r\n", src.six_d_zh);
-}
-
-#if defined (ZB_ON)
 void udpate_accel_values(uint8_t)
 {
     printk("udpate_accel_values\r\n");
@@ -205,8 +254,8 @@ void on_zigbee_start()
 {
     printk("on_zigbee_start\r\n");
     zb_zcl_poll_control_start(0, kACCEL_EP);
-    zb_zcl_poll_controll_register_cb(&udpate_accel_values);
-    g_PeriodicAccel.Setup([]{ udpate_accel_values(0); return true; }, 10000);
+    //zb_zcl_poll_controll_register_cb(&udpate_accel_values);
+    //g_PeriodicAccel.Setup([]{ udpate_accel_values(0); return true; }, 10000);
 
     if constexpr (kPowerSaving)
     {
@@ -247,7 +296,6 @@ void zboss_signal_handler(zb_bufid_t bufid)
 	zb_osif_abort();				
     }							
 }
-#endif
 
 int main(void)
 {
@@ -258,41 +306,30 @@ int main(void)
     if (!gpio_is_ready_dt(&led)) {
 	return 0;
     }
-	//   ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
-	//   if (ret < 0) {
-	//return 0;
-	//   }
+
+    ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
+    if (ret < 0) {
+	return 0;
+    }
 
     if (device_is_ready(accel_dev))
     {
-	//printk("================\r\nAccel State before config:\r\n================\r\n");
-	//lis2du12_dump_registers(accel_dev);
-	//printk("================\r\nEND\r\n================\r\n");
-	ret = sensor_trigger_set(accel_dev, &g_TapTrigger.trig, &on_tap);
-	if (ret != 0) printk("Failed to set trigger on tap: %d\r\n", ret);
-	else printk("Set trigger on tap\r\n");
-	ret = sensor_trigger_set(accel_dev, &g_DbgTapTrigger.trig, &on_double_tap);
-	if (ret != 0) printk("Failed to set trigger on double tap: %d\r\n", ret);
-	else printk("Set trigger on double tap\r\n");
-	ret = sensor_trigger_set(accel_dev, &g_6DTrigger, &on_6d_event);
-	if (ret != 0) printk("Failed to set trigger on 6d: %d\r\n", ret);
-	else printk("Set trigger on 6d\r\n");
-	ret = sensor_trigger_set(accel_dev, &g_WakeUpTrigger.trig, &on_wakeup);
-	if (ret != 0) printk("Failed to set trigger on wakeup: %d\r\n", ret);
-	else printk("Set trigger on wakeup\r\n");
-	printk("================\r\nAccel State after config:\r\n================\r\n");
-	lis2du12_dump_registers(accel_dev);
-	printk("================\r\nEND\r\n================\r\n");
+	reconfigure_interrupts();
+	//ret = sensor_trigger_set(accel_dev, &g_WakeUpTrigger.trig, &on_wakeup);
+	//if (ret != 0) printk("Failed to set trigger on wakeup: %d\r\n", ret);
+	//else printk("Set trigger on wakeup\r\n");
     }else
     {
 	printk("Accelerometer is not ready\r\n");
+	dev_ctx.status_attr.status1 = -1;
     }
 
     printk("Main: before settings init\r\n");
     int err = settings_subsys_init();
 
     printk("Main: before zigbee erase persistent storage\r\n");
-#if defined (ZB_ON)
+    //TODO: implement a counter logic: if reset count reaches 3 -> zigbee reset
+    //after 10 seconds of activity the count is reset to 0
     zigbee_erase_persistent_storage(false);
     zb_set_ed_timeout(ED_AGING_TIMEOUT_64MIN);
     zb_set_keepalive_timeout(ZB_MILLISECONDS_TO_BEACON_INTERVAL(1000*60*30));
@@ -320,32 +357,10 @@ int main(void)
 
     printk("Main: before zigbee enable\r\n");
     zigbee_enable();
-#endif
 
     printk("Main: sleep forever\r\n");
     while (1) {
 	k_sleep(K_FOREVER);
-	//ret = gpio_pin_toggle_dt(&led);
-	//if (ret < 0) return 0;
-	//
-	//if (device_is_ready(accel_dev))
-	//{
-	//    sensor_sample_fetch(accel_dev);
-	//    accel_val acc;
-	//    sensor_channel_get(accel_dev, SENSOR_CHAN_ACCEL_XYZ, &acc.x);
-	//    printk("Accel X: %d; Y: %d; Z: %d;\r\n", acc.x.val1, acc.y.val1, acc.z.val1);
-	//}else
-	//{
-	//    printk("Accel dev not ready\r\n");
-	//}
-	//
-	//led_state = !led_state;
-	//printk("LED: %s\r\n", led_state ? "ON" : "OFF");
-	////if (led_state)
-	////	print_uart("LED state: ON\r\n");
-	////else
-	////	print_uart("LED state: OFF\r\n");
-	//k_msleep(SLEEP_TIME_MS);
     }
 
     return 0;
