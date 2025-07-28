@@ -27,6 +27,8 @@
 
 #include <nrfzbcpp/zb_alarm.hpp>
 
+#include "zb/zb_accel_settings.hpp"
+
 #include <zephyr/drivers/sensor/lis2du12.h>
 
 constexpr bool kPowerSaving = true;
@@ -58,6 +60,7 @@ typedef struct {
     zb::zb_zcl_poll_ctrl_basic_t poll_ctrl;
     zb::zb_zcl_accel_basic_t accel_attr;
     zb::zb_zcl_status_t status_attr;
+    zb::zb_zcl_accel_settings_t settings;
 } bulb_device_ctx_t;
 
 constexpr auto kAttrX = &zb::zb_zcl_accel_basic_t::x;
@@ -99,6 +102,7 @@ constinit static auto zb_ctx = zb::make_device(
 	    , dev_ctx.poll_ctrl
 	    , dev_ctx.accel_attr
 	    , dev_ctx.status_attr
+	    , dev_ctx.settings
 	    )
 	);
 
