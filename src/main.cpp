@@ -17,15 +17,15 @@
 #include <ram_pwrdn.h>
 
 //#define ALARM_LIST_LOCK_TYPE thread::DummyLock
-#include "zb/zb_main.hpp"
-#include "zb/zb_std_cluster_desc.hpp"
-#include "zb/zb_power_config_cluster_desc.hpp"
-#include "zb/zb_poll_ctrl_cluster_desc.hpp"
+#include <nrfzbcpp/zb_main.hpp>
+#include <nrfzbcpp/zb_std_cluster_desc.hpp>
+#include <nrfzbcpp/zb_power_config_cluster_desc.hpp>
+#include <nrfzbcpp/zb_poll_ctrl_cluster_desc.hpp>
 
-#include "zb/zb_accel_cluster_desc.hpp"
-#include "zb/zb_status_cluster_desc.hpp"
+#include <nrfzbcpp/zb_accel_cluster_desc.hpp>
+#include <nrfzbcpp/zb_status_cluster_desc.hpp>
 
-#include "zb/zb_alarm.hpp"
+#include <nrfzbcpp/zb_alarm.hpp>
 
 #include <zephyr/drivers/sensor/lis2du12.h>
 
@@ -248,6 +248,10 @@ void udpate_accel_values(uint8_t)
     }
 }
 
+void on_settings_changed(const uint32_t &v)
+{
+}
+
 zb::ZbTimerExt16 g_PeriodicAccel;
 
 void on_zigbee_start()
@@ -265,7 +269,7 @@ void on_zigbee_start()
     else
 	zb_zdo_pim_set_long_poll_interval(1000 * 10);
 
-    //should be there already
+    //should be there already, initial state
     udpate_accel_values(0);
 }
 
@@ -341,7 +345,14 @@ int main(void)
     }
 
     /* Register callback for handling ZCL commands. */
-    auto dev_cb = zb::tpl_device_cb<>;
+    auto dev_cb = zb::tpl_device_cb<zb::dev_cb_handlers_desc{}
+    , {
+	//{
+	//    .ep = kACCEL_EP,
+	//    .cluster = 
+	//},
+	.handler = zb::to_handler_v<on_settings_changed>
+      }>;
     ZB_ZCL_REGISTER_DEVICE_CB(dev_cb);
 
     /* Register dimmer switch device context (endpoints). */

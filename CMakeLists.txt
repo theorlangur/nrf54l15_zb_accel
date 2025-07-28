@@ -11,8 +11,16 @@ target_sources(app PRIVATE
         submodules/esp_generic_lib/src/lib_linked_list.cpp
 )
 
+# add_subdirectory(submodules/nrf_zb_cpp)
+# target_include_directories(app PRIVATE submodules/nrf_zb_cpp/include)
+
 target_include_directories(app PRIVATE include)
 target_include_directories(app PRIVATE submodules/esp_generic_lib/include)
+
+zephyr_include_directories(submodules/nrf_zb_cpp/include)
+zephyr_include_directories(submodules/nrf_general/include)
+
+# target_link_libraries(app PRIVATE NrfZbCpp)
 if (${ZEPHYR_TOOLCHAIN_VARIANT} STREQUAL  "llvm")
         target_compile_options(app PRIVATE -fmacro-backtrace-limit=0)
         target_compile_options(app PUBLIC -D__cpp_concepts=202002L -Wno-builtin-macro-redefined -Wno-invalid-offsetof)

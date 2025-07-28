@@ -1,3 +1,9 @@
 [submodule "submodules/esp_generic_lib"]
 	path = submodules/esp_generic_lib
 	url = git@github.com:theorlangur/esp_generic_lib.git
+[submodule "submodules/nrf_zb_cpp"]
+	path = submodules/nrf_zb_cpp
+	url = git@github.com:theorlangur/nrf_zb_cpp.git
+[submodule "submodules/nrf_general"]
+	path = submodules/nrf_general
+	url = git@github.com:theorlangur/nrf_general.git
