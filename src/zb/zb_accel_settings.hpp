@@ -13,6 +13,8 @@ extern "C"
 namespace zb
 {
     static constexpr uint16_t kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS = 0xfc01;
+    static constexpr uint16_t kZB_ATTR_ID_MAIN_SETTINGS = 0x0000;
+
     struct zb_zcl_accel_settings_t
     {
         union{
@@ -31,7 +33,7 @@ namespace zb
         return cluster_struct_desc_t<
             cluster_info_t{.id = kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS},
             cluster_attributes_desc_t<
-                cluster_mem_desc_t{.m = &T::flags_dw,.id = 0x0000, .a=Access::RW, .type=Type::Map32}
+                cluster_mem_desc_t{.m = &T::flags_dw,.id = kZB_ATTR_ID_MAIN_SETTINGS, .a=Access::RW, .type=Type::Map32}
             >{}
         >{};
     }

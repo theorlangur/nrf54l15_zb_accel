@@ -254,6 +254,8 @@ void udpate_accel_values(uint8_t)
 
 void on_settings_changed(const uint32_t &v)
 {
+    printk("Settings. Now: %X; Stored: %X", v, dev_ctx.settings.flags_dw);
+    reconfigure_interrupts();
 }
 
 zb::ZbTimerExt16 g_PeriodicAccel;
@@ -350,12 +352,15 @@ int main(void)
 
     /* Register callback for handling ZCL commands. */
     auto dev_cb = zb::tpl_device_cb<zb::dev_cb_handlers_desc{}
+
+    //handler
     , {
-	//{
-	//    .ep = kACCEL_EP,
-	//    .cluster = 
-	//},
-	.handler = zb::to_handler_v<on_settings_changed>
+	{
+	    .ep = kACCEL_EP,
+	    .cluster = zb::kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS,
+	    .attribute = zb::kZB_ATTR_ID_MAIN_SETTINGS
+	},
+	zb::to_handler_v<on_settings_changed>
       }>;
     ZB_ZCL_REGISTER_DEVICE_CB(dev_cb);
 
