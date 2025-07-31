@@ -34,10 +34,10 @@
 constexpr bool kPowerSaving = false;//true;
 
 /* Manufacturer name (32 bytes). */
-#define INIT_BASIC_MANUF_NAME      "TheOrlangur"
+#define INIT_BASIC_MANUF_NAME      "SFINAE"
 
 /* Model number assigned by manufacturer (32-bytes long string). */
-#define INIT_BASIC_MODEL_ID        "Accel_v0.1"
+#define INIT_BASIC_MODEL_ID        "Accel-NG"
 
 
 /* Button used to enter the Bulb into the Identify mode. */

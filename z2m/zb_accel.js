@@ -83,16 +83,19 @@ const orlangurAccelExtended = {
     acceleration: () => {
         const exposes = [
             e.numeric('X', ea.STATE_GET)
-                            .withUnid('g')
+                            .withUnit('g')
                             .withLabel('X')
+                            .withCategory('diagnostic')
                             .withDescription('Acceleration on X axis'),
             e.numeric('Y', ea.STATE_GET)
-                            .withUnid('g')
+                            .withUnit('g')
                             .withLabel('Y')
+                            .withCategory('diagnostic')
                             .withDescription('Acceleration on Y axis'),
             e.numeric('Z', ea.STATE_GET)
-                            .withUnid('g')
+                            .withUnit('g')
                             .withLabel('Z')
+                            .withCategory('diagnostic')
                             .withDescription('Acceleration on Z axis'),
         ];
 
@@ -125,7 +128,7 @@ const orlangurAccelExtended = {
         ];
 
         return {
-            exposes: [exposes],
+            exposes: exposes,
             fromZigbee,
             toZigbee,
             isModernExtend: true,
@@ -146,13 +149,17 @@ const definition = {
                 X: {ID: 0x0000, type: Zcl.DataType.SINGLE_PREC},
                 Y: {ID: 0x0001, type: Zcl.DataType.SINGLE_PREC},
                 Z: {ID: 0x0002, type: Zcl.DataType.SINGLE_PREC},
-            }
+            },
+            commands: {},
+            commandsResponse: {}
         }),
         deviceAddCustomCluster('customConfig', {
             ID: 0xfc01,
             attributes: {
                 flags: {ID: 0x0000, type: Zcl.DataType.BITMAP32},
-            }
+            },
+            commands: {},
+            commandsResponse: {}
         }),
         orlangurAccelExtended.acceleration(),
         orlangurAccelExtended.accelConfig(),
@@ -161,25 +168,29 @@ const definition = {
         const endpoint = device.getEndpoint(1);
         await reporting.bind(endpoint, coordinatorEndpoint, ['customAccel']);
         await endpoint.read('customAccel', ['X','Y','Z']);
-        await endpoint.read('customConfig', [ 'activity_x', 'activity_y', 'activity_z' ]);
+        await endpoint.read('customConfig', [ 'flags' ]);
         await endpoint.configureReporting('customAccel', [
             {
                 attribute: 'X',
                 minimumReportInterval: 30,
                 maximumReportInterval: constants.repInterval.HOUR,
-                reportableChange: 1,
+                reportableChange: 0.1,
             },
+        ]);
+        await endpoint.configureReporting('customAccel', [
             {
                 attribute: 'Y',
                 minimumReportInterval: 30,
                 maximumReportInterval: constants.repInterval.HOUR,
-                reportableChange: 1,
+                reportableChange: 0.1,
             },
+        ]);
+        await endpoint.configureReporting('customAccel', [
             {
                 attribute: 'Z',
                 minimumReportInterval: 30,
                 maximumReportInterval: constants.repInterval.HOUR,
-                reportableChange: 1,
+                reportableChange: 0.1,
             },
         ]);
     },
