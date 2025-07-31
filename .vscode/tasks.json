@@ -20,9 +20,9 @@
             "group": { "kind": "build" }
         },
         {
-            "label": "Flash",
+            "label": "Flash Ezurio LLVM over JLINK-EDU",
             "type": "shell",
-            "command": "./e.sh west flash -d build_llvm"
+            "command": "./e.sh west flash -d build_ezurio_llvm --dev-id 802005000 --erase"
         },
         {
             "label": "Flash OpenOCD",
