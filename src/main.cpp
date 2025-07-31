@@ -31,7 +31,7 @@
 
 #include <zephyr/drivers/sensor/lis2du12.h>
 
-constexpr bool kPowerSaving = true;
+constexpr bool kPowerSaving = false;//true;
 
 /* Manufacturer name (32 bytes). */
 #define INIT_BASIC_MANUF_NAME      "TheOrlangur"
@@ -265,7 +265,7 @@ void on_zigbee_start()
     printk("on_zigbee_start\r\n");
     zb_zcl_poll_control_start(0, kACCEL_EP);
     //zb_zcl_poll_controll_register_cb(&udpate_accel_values);
-    //g_PeriodicAccel.Setup([]{ udpate_accel_values(0); return true; }, 10000);
+    g_PeriodicAccel.Setup([]{ udpate_accel_values(0); return true; }, 10000);
 
     if constexpr (kPowerSaving)
     {
