@@ -254,7 +254,7 @@ void udpate_accel_values(uint8_t)
 
 void on_settings_changed(const uint32_t &v)
 {
-    printk("Settings. Now: %X; Stored: %X", v, dev_ctx.settings.flags_dw);
+    printk("Settings. Now: %X; Stored: %X\r\n", v, dev_ctx.settings.flags_dw);
     reconfigure_interrupts();
 }
 
@@ -307,6 +307,11 @@ void zboss_signal_handler(zb_bufid_t bufid)
     }							
 }
 
+void on_dev_cb_error(int err)
+{
+    printk("on_dev_cb_error: %d\r\n", err);
+}
+
 int main(void)
 {
     int ret;
@@ -351,17 +356,18 @@ int main(void)
     }
 
     /* Register callback for handling ZCL commands. */
-    auto dev_cb = zb::tpl_device_cb<zb::dev_cb_handlers_desc{}
-
-    //handler
-    , {
+    auto dev_cb = zb::tpl_device_cb<
+	zb::dev_cb_handlers_desc{ .error_handler = on_dev_cb_error }
+	//handler
+    , zb::set_attr_val_gen_desc_t{
 	{
 	    .ep = kACCEL_EP,
 	    .cluster = zb::kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS,
 	    .attribute = zb::kZB_ATTR_ID_MAIN_SETTINGS
 	},
 	zb::to_handler_v<on_settings_changed>
-      }>;
+      }
+    >;
     ZB_ZCL_REGISTER_DEVICE_CB(dev_cb);
 
     /* Register dimmer switch device context (endpoints). */
