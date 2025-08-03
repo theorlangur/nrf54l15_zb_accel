@@ -97,26 +97,49 @@ const orlangurAccelExtended = {
                             .withLabel('Z')
                             .withCategory('diagnostic')
                             .withDescription('Acceleration on Z axis'),
+            e.numeric('LastEvent', ea.STATE_GET)
+                            .withLabel('LastEvent')
+                            .withCategory('diagnostic'),
+            e.numeric('EventCount', ea.STATE_GET)
+                            .withLabel('Event Count')
+                            .withCategory('diagnostic'),
         ];
 
-        const fromZigbee = [{
-            cluster: 'customAccel',
-            type: ['attributeReport', 'readResponse'],
-            convert: (model, msg, publish, options, meta) => {
-                const result = {};
-                const data = msg.data;
-                //logger.debug(`fZ convert attr: ${attr}; data:${util.inspect(data)}`, NS);
-                if ('X' in data) 
-                    result['X'] = data['X']
-                if ('Y' in data) 
-                    result['Y'] = data['Y']
-                if ('Z' in data) 
-                    result['Z'] = data['Z']
-                if (Object.keys(result).length == 0) 
+        const fromZigbee = [
+            {
+                cluster: 'customAccel',
+                type: ['attributeReport', 'readResponse'],
+                convert: (model, msg, publish, options, meta) => {
+                    const result = {};
+                    const data = msg.data;
+                    //logger.debug(`fZ convert attr: ${attr}; data:${util.inspect(data)}`, NS);
+                    if ('X' in data) 
+                        result['X'] = data['X']
+                    if ('Y' in data) 
+                        result['Y'] = data['Y']
+                    if ('Z' in data) 
+                        result['Z'] = data['Z']
+                    if (Object.keys(result).length == 0) 
+                        return;
+                    return result;
+                }
+            },
+            {
+                cluster: 'customAccel',
+                type: ['commandNotification'],
+                convert: (model, msg, publish, options, meta) => {
+                    const commandID = msg.data.commandID
+                    if (commandID == 100)
+                    {
+                        const payloadBuf = Buffer.from(msg.data.commandFrame.raw);
+                        const param1 = payloadBuf.readUInt32LE(0);
+                        const cnt = meta.state.EventCount;
+                        return {LastEvent: param1, EventCount: cnt + 1};
+                    }
                     return;
-                return result;
+                }
             }
-        }];
+        ];
 
         const toZigbee = [
             {
