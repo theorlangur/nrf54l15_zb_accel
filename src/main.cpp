@@ -66,6 +66,7 @@ typedef struct {
 constexpr auto kAttrX = &zb::zb_zcl_accel_basic_t::x;
 constexpr auto kAttrY = &zb::zb_zcl_accel_basic_t::y;
 constexpr auto kAttrZ = &zb::zb_zcl_accel_basic_t::z;
+constexpr auto kCmdOnEvent = &zb::zb_zcl_accel_basic_t::on_event;
 constexpr auto kAttrStatus1 = &zb::zb_zcl_status_t::status1;
 constexpr auto kAttrBattVoltage = &zb::zb_zcl_power_cfg_battery_info_t::batt_voltage;
 constexpr auto kAttrBattPercentage = &zb::zb_zcl_power_cfg_battery_info_t::batt_percentage_remaining;
@@ -96,7 +97,7 @@ static constinit bulb_device_ctx_t dev_ctx{
 };
 
 constinit static auto zb_ctx = zb::make_device(
-	zb::make_ep_args<{.ep=kACCEL_EP, .dev_id=kDEV_ID, .dev_ver=1}>(
+	zb::make_ep_args<{.ep=kACCEL_EP, .dev_id=kDEV_ID, .dev_ver=1, .cmd_queue_depth = 4}>(
 	    dev_ctx.basic_attr
 	    , dev_ctx.battery_attr
 	    , dev_ctx.poll_ctrl
@@ -156,12 +157,26 @@ struct accel_val
 //}
 
 static lis2du12_trigger g_SleepTrigger{ 
-    .trig={.type = (enum sensor_trigger_type)LIS2DU12_TRIG_SLEEP_CHANGE, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
-    //.wake_cfg = {.z_enable = 0, .threshold = 1}
+    .trig={.type = (enum sensor_trigger_type)LIS2DU12_TRIG_WAKE_UP, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
+    .wake_cfg = { .x_enable=1, .y_enable=1, .z_enable = 1, .threshold = 1}
 };
-void on_sleep(const struct device *dev, const struct sensor_trigger *trigger)
+
+static bool g_ZigbeeReady = false;
+
+void on_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
 {
-    printk("sleep state detected\r\n");
+    printk("zb: on_cmd_sent\r\n");
+    printk("zb: on_cmd_sent: status: %d\r\n", status->status);
+}
+
+void on_sleep_zb(uint8_t buf)
+{
+    printk("zb: wake up detected\r\n");
+    if (!g_ZigbeeReady)
+    {
+	printk("zb: zigbee stack not ready yet\r\n");
+	return;
+    }
     sensor_sample_fetch(accel_dev);
     accel_val acc;
     sensor_channel_get(accel_dev, SENSOR_CHAN_ACCEL_XYZ, &acc.x);
@@ -170,11 +185,13 @@ void on_sleep(const struct device *dev, const struct sensor_trigger *trigger)
     y = float(acc.y.val1) + float(acc.y.val2) / 1000'000.f;
     z = float(acc.z.val1) + float(acc.z.val2) / 1000'000.f;
 
+    zb::EventArgs events;
     if (g_Settings.detect_flip_x)
     {
 	bool diff = std::abs(x - dev_ctx.accel_attr.x) > kFlipThreshold;
 	if (diff)
 	{
+	    events.flip_x = 1;
 	    //notify x-flip
 	}
     }
@@ -185,6 +202,7 @@ void on_sleep(const struct device *dev, const struct sensor_trigger *trigger)
 	if (diff)
 	{
 	    //notify y-flip
+	    events.flip_y = 1;
 	}
     }
 
@@ -193,6 +211,7 @@ void on_sleep(const struct device *dev, const struct sensor_trigger *trigger)
 	bool diff = std::abs(z - dev_ctx.accel_attr.z) > kFlipThreshold;
 	if (diff)
 	{
+	    events.flip_z = 1;
 	    //notify z-flip
 	}
     }
@@ -201,6 +220,15 @@ void on_sleep(const struct device *dev, const struct sensor_trigger *trigger)
     zb_ep.attr<kAttrX>() = x;
     zb_ep.attr<kAttrY>() = y;
     zb_ep.attr<kAttrZ>() = z;
+
+    zb_ep.send_cmd<kCmdOnEvent, {.cb=on_cmd_sent}>(events);
+}
+
+void on_sleep(const struct device *dev, const struct sensor_trigger *trigger)
+{
+    //post on Zigbee thread and run immedieately
+    printk("wake up detected -> zb\r\n");
+    zb_schedule_app_alarm(on_sleep_zb, 0, 0);
 }
 
 void reconfigure_interrupts()
@@ -213,20 +241,21 @@ void reconfigure_interrupts()
 	//g_WakeUpTrigger.wake_cfg.x_enable = g_Settings.detect_flip_x;
 	//g_WakeUpTrigger.wake_cfg.y_enable = g_Settings.detect_flip_y;
 	//g_WakeUpTrigger.wake_cfg.z_enable = g_Settings.detect_flip_z;
-
 	int ret;
-	if (g_Settings.detect_flip_x || g_Settings.detect_flip_y || g_Settings.detect_flip_z)
+	if (dev_ctx.settings.flags.enable_x || dev_ctx.settings.flags.enable_y || dev_ctx.settings.flags.enable_z)
 	{
 	    //ret = sensor_trigger_set(accel_dev, &g_WakeUpTrigger.trig, &on_wakeup);
 	    //if (ret != 0) printk("Failed to set wake up trigger");
 	    ret = sensor_trigger_set(accel_dev, &g_SleepTrigger.trig, &on_sleep);
-	    if (ret != 0) printk("Failed to set sleep trigger");
+	    if (ret != 0) printk("Failed to set sleep trigger\r\n");
+	    else printk("Enabled wake interrupts\r\n");
 	}else
 	{
 	    //ret = sensor_trigger_set(accel_dev, &g_WakeUpTrigger.trig, nullptr);
 	    //if (ret != 0) printk("Failed to remove wake up trigger");
 	    ret = sensor_trigger_set(accel_dev, &g_SleepTrigger.trig, nullptr);
 	    if (ret != 0) printk("Failed to remove sleep trigger");
+	    else printk("Disabled wake interrupts\r\n");
 	}
     }
 }
@@ -263,6 +292,7 @@ zb::ZbTimerExt16 g_PeriodicAccel;
 void on_zigbee_start()
 {
     printk("on_zigbee_start\r\n");
+    g_ZigbeeReady = true;
     zb_zcl_poll_control_start(0, kACCEL_EP);
     //zb_zcl_poll_controll_register_cb(&udpate_accel_values);
     g_PeriodicAccel.Setup([]{ udpate_accel_values(0); return true; }, 10000);
@@ -388,6 +418,5 @@ int main(void)
     while (1) {
 	k_sleep(K_FOREVER);
     }
-
     return 0;
 }
