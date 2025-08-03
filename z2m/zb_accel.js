@@ -173,7 +173,12 @@ const definition = {
                 Y: {ID: 0x0001, type: Zcl.DataType.SINGLE_PREC},
                 Z: {ID: 0x0002, type: Zcl.DataType.SINGLE_PREC},
             },
-            commands: {},
+            commands: {
+                on_event: {
+                    ID: 100,
+                    parameters: [{name: 'flags', type: Zcl.DataType.UINT32}],
+                },
+            },
             commandsResponse: {}
         }),
         deviceAddCustomCluster('customConfig', {
