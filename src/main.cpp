@@ -54,19 +54,21 @@ constexpr uint16_t kDEV_ID = 0xDEAD;
 /* Main application customizable context.
  * Stores all settings and static values.
  */
-typedef struct {
+struct bulb_device_ctx_t{
+    using accel_type = zb::zb_zcl_accel_basic_t<{.on_event_pool_size = 4}>;
+
     zb::zb_zcl_basic_names_t basic_attr;
     zb::zb_zcl_power_cfg_battery_info_t battery_attr;
     zb::zb_zcl_poll_ctrl_basic_t poll_ctrl;
-    zb::zb_zcl_accel_basic_t accel_attr;
+    accel_type accel_attr;
     zb::zb_zcl_status_t status_attr;
     zb::zb_zcl_accel_settings_t settings;
-} bulb_device_ctx_t;
+};
 
-constexpr auto kAttrX = &zb::zb_zcl_accel_basic_t::x;
-constexpr auto kAttrY = &zb::zb_zcl_accel_basic_t::y;
-constexpr auto kAttrZ = &zb::zb_zcl_accel_basic_t::z;
-constexpr auto kCmdOnEvent = &zb::zb_zcl_accel_basic_t::on_event;
+constexpr auto kAttrX = &bulb_device_ctx_t::accel_type::x;
+constexpr auto kAttrY = &bulb_device_ctx_t::accel_type::y;
+constexpr auto kAttrZ = &bulb_device_ctx_t::accel_type::z;
+constexpr auto kCmdOnEvent = &bulb_device_ctx_t::accel_type::on_event;
 constexpr auto kAttrStatus1 = &zb::zb_zcl_status_t::status1;
 constexpr auto kAttrBattVoltage = &zb::zb_zcl_power_cfg_battery_info_t::batt_voltage;
 constexpr auto kAttrBattPercentage = &zb::zb_zcl_power_cfg_battery_info_t::batt_percentage_remaining;
