@@ -167,8 +167,7 @@ static bool g_ZigbeeReady = false;
 
 void on_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
 {
-    printk("zb: on_cmd_sent\r\n");
-    printk("zb: on_cmd_sent: status: %d\r\n", status->status);
+    printk("zb: on_cmd_sent id:%d; status: %d\r\n", cmd_id, status->status);
 }
 
 void on_sleep_zb(uint8_t buf)

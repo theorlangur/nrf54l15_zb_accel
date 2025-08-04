@@ -126,17 +126,11 @@ const orlangurAccelExtended = {
             },
             {
                 cluster: 'customAccel',
-                type: ['commandNotification'],
+                type: ['commandOn_event'],
                 convert: (model, msg, publish, options, meta) => {
-                    const commandID = msg.data.commandID
-                    if (commandID == 100)
-                    {
-                        const payloadBuf = Buffer.from(msg.data.commandFrame.raw);
-                        const param1 = payloadBuf.readUInt32LE(0);
-                        const cnt = meta.state.EventCount;
-                        return {LastEvent: param1, EventCount: cnt + 1};
-                    }
-                    return;
+                    var cnt = meta.state.EventCount;
+                    if (cnt === null) cnt = 0;
+                    return {LastEvent: msg.data.flags, EventCount: cnt + 1};
                 }
             }
         ];
