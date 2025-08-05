@@ -75,6 +75,8 @@ constexpr auto kAttrBattPercentage = &zb::zb_zcl_power_cfg_battery_info_t::batt_
 
 constexpr uint32_t kPowerCycleThresholdSeconds = 6 * 60 - 1; //Just under 6 minutes
 
+zb::CmdHandlingResult on_accel_in_event(zb::InEvent const& ev);
+
 using namespace zb::literals;
 /* Zigbee device application context storage. */
 static constinit bulb_device_ctx_t dev_ctx{
@@ -94,9 +96,14 @@ static constinit bulb_device_ctx_t dev_ctx{
 	.accel_attr = {
 	    .x = 0,
 	    .y = 0,
-	    .z = 0
+	    .z = 0,
+	    .on_in_event = {.cb = on_accel_in_event}
 	}
 };
+
+//forward declare
+template<> struct zb::cluster_custom_handler_t<bulb_device_ctx_t::accel_type, kACCEL_EP>;
+using custom_accel_handler_t = zb::cluster_custom_handler_t<bulb_device_ctx_t::accel_type, kACCEL_EP>;
 
 constinit static auto zb_ctx = zb::make_device(
 	zb::make_ep_args<{.ep=kACCEL_EP, .dev_id=kDEV_ID, .dev_ver=1, .cmd_queue_depth = 4}>(
@@ -110,6 +117,19 @@ constinit static auto zb_ctx = zb::make_device(
 	);
 
 constinit static auto &zb_ep = zb_ctx.ep<kACCEL_EP>();
+
+template<> 
+struct zb::cluster_custom_handler_t<bulb_device_ctx_t::accel_type, kACCEL_EP>: cluster_custom_handler_base_t<custom_accel_handler_t>
+{
+    //the rest will be done by cluster_custom_handler_base_t
+    static auto& get_device() { return zb_ctx; }
+};
+
+zb::CmdHandlingResult on_accel_in_event(zb::InEvent const& ev)
+{
+    printk("on_accel_in_event: %d; %d", ev.param1, ev.param2);
+    return {};
+}
 
     /* 1000 msec = 1 sec */
 #define SLEEP_TIME_MS   2000
@@ -167,6 +187,10 @@ static bool g_ZigbeeReady = false;
 
 void on_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
 {
+    //auto cmd = zb_ctx.eps.m.attributes.get(zb::mem_tag_t<bulb_device_ctx_t::accel_type>{}).generated_commands;
+    //auto cmd2 = zb_ctx.eps.m.attributes.get(zb::mem_tag_t<bulb_device_ctx_t::accel_type>{}).received_commands;
+    //sizeof(cmd);
+    //sizeof(cmd2);
     printk("zb: on_cmd_sent id:%d; status: %d\r\n", cmd_id, status->status);
 }
 
