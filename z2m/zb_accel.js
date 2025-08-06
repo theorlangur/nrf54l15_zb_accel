@@ -103,6 +103,7 @@ const orlangurAccelExtended = {
             e.numeric('EventCount', ea.STATE_GET)
                             .withLabel('Event Count')
                             .withCategory('diagnostic'),
+            e.enum('in_event', ea.SET, ['On']).withLabel('Send Test Cmd').withDescription('Send Test Cmd Descr'),
         ];
 
         const fromZigbee = [
@@ -141,7 +142,13 @@ const orlangurAccelExtended = {
                 convertGet: async (entity, key, meta) => {
                     await entity.read('customAccel', [key]);
                 },
-            }
+            },
+            {
+                key: ['in_event'],
+                convertSet: async (entity, key, value, meta) => {
+                    await entity.command('customAccel', 'on_in_event', {param1:5, param2:meta.state.EventCount}, {});
+                },
+            },
         ];
 
         return {
@@ -171,6 +178,10 @@ const definition = {
                 on_event: {
                     ID: 100,
                     parameters: [{name: 'flags', type: Zcl.DataType.UINT32}],
+                },
+                on_in_event: {
+                    ID: 101,
+                    parameters: [{name: 'param1', type: Zcl.DataType.UINT8}, {name: 'param2', type: Zcl.DataType.UINT16}],
                 },
             },
             commandsResponse: {}
