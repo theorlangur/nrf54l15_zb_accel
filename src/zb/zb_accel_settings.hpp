@@ -3,13 +3,6 @@
 
 #include <nrfzbcpp/zb_main.hpp>
 
-extern "C"
-{
-#include <zboss_api_addons.h>
-#include <zb_mem_config_med.h>
-#include <zb_nrf_platform.h>
-}
-
 namespace zb
 {
     static constexpr uint16_t kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS = 0xfc01;
@@ -40,7 +33,5 @@ namespace zb
             >{};
         }
     };
-
-DEFINE_NULL_CLUSTER_INIT_FOR(kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS);
 }
 #endif
