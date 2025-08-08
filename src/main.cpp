@@ -54,7 +54,7 @@ constexpr uint16_t kDEV_ID = 0xDEAD;
 /* Main application customizable context.
  * Stores all settings and static values.
  */
-struct bulb_device_ctx_t{
+struct device_ctx_t{
     using accel_type = zb::zb_zcl_accel_basic_t<{.on_event_pool_size = 3}>;
 
     zb::zb_zcl_basic_names_t basic_attr;
@@ -65,10 +65,10 @@ struct bulb_device_ctx_t{
     zb::zb_zcl_accel_settings_t settings;
 };
 
-constexpr auto kAttrX = &bulb_device_ctx_t::accel_type::x;
-constexpr auto kAttrY = &bulb_device_ctx_t::accel_type::y;
-constexpr auto kAttrZ = &bulb_device_ctx_t::accel_type::z;
-constexpr auto kCmdOnEvent = &bulb_device_ctx_t::accel_type::on_event;
+constexpr auto kAttrX = &device_ctx_t::accel_type::x;
+constexpr auto kAttrY = &device_ctx_t::accel_type::y;
+constexpr auto kAttrZ = &device_ctx_t::accel_type::z;
+constexpr auto kCmdOnEvent = &device_ctx_t::accel_type::on_event;
 constexpr auto kAttrStatus1 = &zb::zb_zcl_status_t::status1;
 constexpr auto kAttrBattVoltage = &zb::zb_zcl_power_cfg_battery_info_t::batt_voltage;
 constexpr auto kAttrBattPercentage = &zb::zb_zcl_power_cfg_battery_info_t::batt_percentage_remaining;
@@ -79,7 +79,7 @@ zb::CmdHandlingResult on_accel_in_event(zb::InEvent const& ev);
 
 using namespace zb::literals;
 /* Zigbee device application context storage. */
-static constinit bulb_device_ctx_t dev_ctx{
+static constinit device_ctx_t dev_ctx{
     .basic_attr = {
 	{
 	    .zcl_version = ZB_ZCL_VERSION,
@@ -102,11 +102,11 @@ static constinit bulb_device_ctx_t dev_ctx{
 };
 
 //forward declare
-template<> struct zb::cluster_custom_handler_t<bulb_device_ctx_t::accel_type, kACCEL_EP>;
-using custom_accel_handler_t = zb::cluster_custom_handler_t<bulb_device_ctx_t::accel_type, kACCEL_EP>;
+template<> struct zb::cluster_custom_handler_t<device_ctx_t::accel_type, kACCEL_EP>;
+using custom_accel_handler_t = zb::cluster_custom_handler_t<device_ctx_t::accel_type, kACCEL_EP>;
 
 constinit static auto zb_ctx = zb::make_device(
-	zb::make_ep_args<{.ep=kACCEL_EP, .dev_id=kDEV_ID, .dev_ver=1, .cmd_queue_depth = 4}>(
+	zb::make_ep_args<{.ep=kACCEL_EP, .dev_id=kDEV_ID, .dev_ver=1}>(
 	    dev_ctx.basic_attr
 	    , dev_ctx.battery_attr
 	    , dev_ctx.poll_ctrl
@@ -119,7 +119,7 @@ constinit static auto zb_ctx = zb::make_device(
 constinit static auto &zb_ep = zb_ctx.ep<kACCEL_EP>();
 
 template<> 
-struct zb::cluster_custom_handler_t<bulb_device_ctx_t::accel_type, kACCEL_EP>: cluster_custom_handler_base_t<custom_accel_handler_t>
+struct zb::cluster_custom_handler_t<device_ctx_t::accel_type, kACCEL_EP>: cluster_custom_handler_base_t<custom_accel_handler_t>
 {
     //the rest will be done by cluster_custom_handler_base_t
     static auto& get_device() { return zb_ctx; }
