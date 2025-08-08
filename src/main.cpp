@@ -55,7 +55,7 @@ constexpr uint16_t kDEV_ID = 0xDEAD;
  * Stores all settings and static values.
  */
 struct bulb_device_ctx_t{
-    using accel_type = zb::zb_zcl_accel_basic_t<{.on_event_pool_size = 4}>;
+    using accel_type = zb::zb_zcl_accel_basic_t<{.on_event_pool_size = 3}>;
 
     zb::zb_zcl_basic_names_t basic_attr;
     zb::zb_zcl_power_cfg_battery_info_t battery_attr;
@@ -127,7 +127,7 @@ struct zb::cluster_custom_handler_t<bulb_device_ctx_t::accel_type, kACCEL_EP>: c
 
 zb::CmdHandlingResult on_accel_in_event(zb::InEvent const& ev)
 {
-    printk("on_accel_in_event: %d; %d", ev.param1, ev.param2);
+    printk("on_accel_in_event: %d; %d\r\n", ev.param1, ev.param2);
     return {};
 }
 
