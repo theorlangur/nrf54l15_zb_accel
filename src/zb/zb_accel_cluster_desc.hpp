@@ -8,6 +8,7 @@ namespace zb
     static constexpr uint16_t kZB_ZCL_CLUSTER_ID_ACCEL = 0xfc00;
     static constexpr uint8_t kZB_ZCL_ACCEL_CMD_WAKE_UP_EVENT = 100;
     static constexpr uint8_t kZB_ZCL_ACCEL_CMD_SLEEP_EVENT = 101;
+    static constexpr uint8_t kZB_ZCL_ACCEL_CMD_FLIP_EVENT = 102;
     struct EventArgs
     {
         uint32_t tap : 1;
@@ -37,6 +38,16 @@ namespace zb
         uint8_t on_event_pool_size = 0;
     };
 
+    struct flip_event_arg_t
+    {
+        uint8_t flip_x : 1 = 0;
+        uint8_t flip_y : 1 = 0;
+        uint8_t flip_z : 1 = 0;
+        uint8_t unused : 5 = 0;
+
+        explicit operator bool() const { return flip_x || flip_y || flip_z; }
+    };
+
     template<accel_config_t cfg = {}>
     struct zb_zcl_accel_basic_t
     {
@@ -45,6 +56,7 @@ namespace zb
         float z;//1.f == 1G
         [[no_unique_address]]cluster_std_cmd_desc_with_pool_size_t<kZB_ZCL_ACCEL_CMD_WAKE_UP_EVENT, cfg.on_event_pool_size, MeasuredAccelValues> on_wake_up;
         [[no_unique_address]]cluster_std_cmd_desc_with_pool_size_t<kZB_ZCL_ACCEL_CMD_SLEEP_EVENT, cfg.on_event_pool_size, MeasuredAccelValues> on_sleep;
+        [[no_unique_address]]cluster_std_cmd_desc_with_pool_size_t<kZB_ZCL_ACCEL_CMD_FLIP_EVENT, cfg.on_event_pool_size, flip_event_arg_t> on_flip;
     };
 
     template<accel_config_t cfg> struct zcl_description_t<zb_zcl_accel_basic_t<cfg>> {
@@ -61,6 +73,7 @@ namespace zb
                 ,cluster_commands_desc_t<
                      &T::on_wake_up
                      ,&T::on_sleep
+                     ,&T::on_flip
                 >{}
             >{};
         }

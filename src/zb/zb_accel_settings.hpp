@@ -28,6 +28,7 @@ namespace zb
                 uint32_t enable_z      : 1 = 1;
                 uint32_t track_wake_up : 1 = 0;
                 uint32_t track_sleep   : 1 = 0;
+                uint32_t track_flip    : 1 = 0;
             }flags{};
             uint32_t flags_dw;
         };
