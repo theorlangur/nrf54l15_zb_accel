@@ -2,7 +2,8 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
-set(EXTRA_DTC_OVERLAY_FILE "dts.overlay")
+# set(EXTRA_DTC_OVERLAY_FILE "dts.overlay")
+set(EXTRA_DTC_OVERLAY_FILE "dts_pcbv1.overlay")
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nrf54l15_breakout_test)
 
