@@ -5,9 +5,6 @@
  */
 
 
-//#include <iostream>
-#include <memory>
-
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/uart.h>
@@ -33,6 +30,9 @@
 
 constexpr bool kPowerSaving = false;//true;
 
+/**********************************************************************/
+/* Zigbee Declarations and Definitions                                */
+/**********************************************************************/
 /* Manufacturer name (32 bytes). */
 #define INIT_BASIC_MANUF_NAME      "SFINAE"
 
@@ -70,6 +70,7 @@ constexpr auto kAttrY = &device_ctx_t::accel_type::y;
 constexpr auto kAttrZ = &device_ctx_t::accel_type::z;
 constexpr auto kCmdOnWakeUpEvent = &device_ctx_t::accel_type::on_wake_up;
 constexpr auto kCmdOnSleepEvent = &device_ctx_t::accel_type::on_sleep;
+constexpr auto kCmdOnFlipEvent = &device_ctx_t::accel_type::on_flip;
 constexpr auto kAttrStatus1 = &zb::zb_zcl_status_t::status1;
 constexpr auto kAttrBattVoltage = &zb::zb_zcl_power_cfg_battery_info_t::batt_voltage;
 constexpr auto kAttrBattPercentage = &zb::zb_zcl_power_cfg_battery_info_t::batt_percentage_remaining;
@@ -123,10 +124,14 @@ struct zb::cluster_custom_handler_t<device_ctx_t::accel_type, kACCEL_EP>: cluste
     static auto& get_device() { return zb_ctx; }
 };
 
-    /* 1000 msec = 1 sec */
-#define SLEEP_TIME_MS   2000
 
-    /* The devicetree node identifier for the "led0" alias. */
+static bool g_ZigbeeReady = false;
+
+/**********************************************************************/
+/* ZephyrOS devices                                                   */
+/**********************************************************************/
+
+/* The devicetree node identifier for the "led0" alias. */
 #define LED0_NODE DT_ALIAS(led0)
 
 //#define UART_DEVICE_NODE DT_CHOSEN(zephyr_console)
@@ -139,18 +144,9 @@ static const struct device *const accel_dev = DEVICE_DT_GET(DT_NODELABEL(accel))
  */
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
-struct accel_settings
-{
-    uint32_t detect_flip_x    : 1;
-    uint32_t detect_flip_y    : 1;
-    uint32_t detect_flip_z    : 1;
-    uint32_t regular_readings : 1;
-    uint32_t unused           : 28;
-};
-
-constinit static accel_settings g_Settings{};
-constexpr float kFlipThreshold = 1.f;
-
+/**********************************************************************/
+/* Accelerometer stuff                                                */
+/**********************************************************************/
 struct accel_val
 {
     sensor_value x;
@@ -158,17 +154,51 @@ struct accel_val
     sensor_value z;
 };
 
-//static lis2du12_trigger g_WakeUpTrigger{ 
-//    .trig={.type = (enum sensor_trigger_type)LIS2DU12_TRIG_WAKE_UP, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
-//    .wake_cfg = {.z_enable = 0, .threshold = 1}
-//};
-//void on_wakeup(const struct device *dev, const struct sensor_trigger *trigger)
-//{
-//    printk("wake up detected\r\n");
-//    sensor_sample_fetch(accel_dev);
-//    accel_val acc;
-//    sensor_channel_get(accel_dev, SENSOR_CHAN_ACCEL_XYZ, &acc.x);
-//}
+struct FlipTracker
+{
+    static constexpr float kFlipThreshold = 0.7f;
+
+    float m_LastMeasuredX = std::numeric_limits<float>::quiet_NaN();
+    float m_LastMeasuredY = std::numeric_limits<float>::quiet_NaN();
+    float m_LastMeasuredZ = std::numeric_limits<float>::quiet_NaN();
+
+    zb::flip_event_arg_t CheckFlip(accel_val const& newVals)
+    {
+	zb::flip_event_arg_t res{};
+
+	auto TryUpdateMeasurement = [&](sensor_value newSensorX, float &last)
+	{
+	    float newX = float(newSensorX.val1) + float(newSensorX.val2) / 1000'000.f;
+	    if (std::isnan(last))
+		last = newX;
+	    else if (((last > 0) == (newX > 0)) && (std::abs(newX) > std::abs(last)))
+		last = newX;
+	    else if ((last > 0) != (newX > 0))
+	    {
+		if (std::abs(newX - last) > kFlipThreshold)
+		{
+		    //flip happened
+		    last = newX;
+		    return true;
+		}
+	    }
+	    return false;
+	};
+
+	if (dev_ctx.settings.flags.track_flip)
+	{
+	    if (dev_ctx.settings.flags.enable_x)
+		res.flip_x = TryUpdateMeasurement(newVals.x, m_LastMeasuredX);
+	    if (dev_ctx.settings.flags.enable_y)
+		res.flip_y = TryUpdateMeasurement(newVals.y, m_LastMeasuredY);
+	    if (dev_ctx.settings.flags.enable_z)
+		res.flip_z = TryUpdateMeasurement(newVals.z, m_LastMeasuredZ);
+	}
+	return res;
+    }
+};
+
+FlipTracker g_Flip;
 
 static lis2du12_trigger g_WakeUpTrigger{ 
     .trig={.type = (enum sensor_trigger_type)LIS2DU12_TRIG_WAKE_UP, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
@@ -180,14 +210,8 @@ static lis2du12_trigger g_SleepTrigger{
     .wake_cfg = { .x_enable=0, .y_enable=0, .z_enable = 1, .sleep_on = 1, .sleep_duration = 15, .wake_threshold = 1, .wake_duration = 0}
 };
 
-static bool g_ZigbeeReady = false;
-
 void on_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
 {
-    //auto cmd = zb_ctx.eps.m.attributes.get(zb::mem_tag_t<bulb_device_ctx_t::accel_type>{}).generated_commands;
-    //auto cmd2 = zb_ctx.eps.m.attributes.get(zb::mem_tag_t<bulb_device_ctx_t::accel_type>{}).received_commands;
-    //sizeof(cmd);
-    //sizeof(cmd2);
     printk("zb: on_cmd_sent id:%d; status: %d\r\n", cmd_id, status->status);
 }
 
@@ -216,7 +240,14 @@ void on_sleep_zb(uint8_t buf)
     zb_ep.attr<kAttrY>() = y;
     zb_ep.attr<kAttrZ>() = z;
 
-    zb_ep.send_cmd<kCmdOnSleepEvent, {.cb=on_cmd_sent}>(vals);
+    if (dev_ctx.settings.flags.track_sleep)
+	zb_ep.send_cmd<kCmdOnSleepEvent, {.cb=on_cmd_sent}>(vals);
+    if (dev_ctx.settings.flags.track_flip)
+    {
+	auto flipRes = g_Flip.CheckFlip(acc);
+	if (flipRes)
+	    zb_ep.send_cmd<kCmdOnFlipEvent, {.cb=on_cmd_sent}>(flipRes);
+    }
 }
 
 void on_sleep(const struct device *dev, const struct sensor_trigger *trigger)
@@ -263,36 +294,30 @@ void on_wake_up(const struct device *dev, const struct sensor_trigger *trigger)
 
 void reconfigure_interrupts()
 {
-	//   if (   (g_WakeUpTrigger.wake_cfg.x_enable != g_Settings.detect_flip_x)
-	//|| (g_WakeUpTrigger.wake_cfg.y_enable != g_Settings.detect_flip_y)
-	//|| (g_WakeUpTrigger.wake_cfg.z_enable != g_Settings.detect_flip_z)
-	//      )
+    int ret;
+    bool xyz_enabled = dev_ctx.settings.flags.enable_x || dev_ctx.settings.flags.enable_y || dev_ctx.settings.flags.enable_z;
+    if (xyz_enabled && (dev_ctx.settings.flags.track_sleep || dev_ctx.settings.flags.track_flip))
     {
-	//g_WakeUpTrigger.wake_cfg.x_enable = g_Settings.detect_flip_x;
-	//g_WakeUpTrigger.wake_cfg.y_enable = g_Settings.detect_flip_y;
-	//g_WakeUpTrigger.wake_cfg.z_enable = g_Settings.detect_flip_z;
-	int ret;
-	if (dev_ctx.settings.flags.enable_x || dev_ctx.settings.flags.enable_y || dev_ctx.settings.flags.enable_z)
-	{
-	    ret = sensor_trigger_set(accel_dev, &g_SleepTrigger.trig, &on_sleep);
-	    if (ret != 0) printk("Failed to set sleep trigger\r\n");
-	    else printk("Enabled sleep interrupts\r\n");
+	ret = sensor_trigger_set(accel_dev, &g_SleepTrigger.trig, &on_sleep);
+	if (ret != 0) printk("Failed to set sleep trigger\r\n");
+	else printk("Enabled sleep interrupts\r\n");
+    }else
+    {
+	ret = sensor_trigger_set(accel_dev, &g_SleepTrigger.trig, nullptr);
+	if (ret != 0) printk("Failed to remove sleep trigger");
+	else printk("Disabled wake interrupts\r\n");
+    }
 
-	    ret = sensor_trigger_set(accel_dev, &g_WakeUpTrigger.trig, &on_wake_up);
-	    if (ret != 0) printk("Failed to set wake up trigger\r\n");
-	    else printk("Enabled wake up interrupts\r\n");
-	}else
-	{
-	    //ret = sensor_trigger_set(accel_dev, &g_WakeUpTrigger.trig, nullptr);
-	    //if (ret != 0) printk("Failed to remove wake up trigger");
-	    ret = sensor_trigger_set(accel_dev, &g_SleepTrigger.trig, nullptr);
-	    if (ret != 0) printk("Failed to remove sleep trigger");
-	    else printk("Disabled wake interrupts\r\n");
-
-	    ret = sensor_trigger_set(accel_dev, &g_WakeUpTrigger.trig, nullptr);
-	    if (ret != 0) printk("Failed to remove wake up trigger\r\n");
-	    else printk("Disabled wake up interrupts\r\n");
-	}
+    if (xyz_enabled && dev_ctx.settings.flags.track_wake_up)
+    {
+	ret = sensor_trigger_set(accel_dev, &g_WakeUpTrigger.trig, &on_wake_up);
+	if (ret != 0) printk("Failed to set wake up trigger\r\n");
+	else printk("Enabled wake up interrupts\r\n");
+    }else
+    {
+	ret = sensor_trigger_set(accel_dev, &g_WakeUpTrigger.trig, nullptr);
+	if (ret != 0) printk("Failed to remove wake up trigger\r\n");
+	else printk("Disabled wake up interrupts\r\n");
     }
 }
 
@@ -308,6 +333,7 @@ void udpate_accel_values(uint8_t)
 	zb_ep.attr<kAttrY>() = float(acc.y.val1) + float(acc.y.val2) / 1000'000.f;
 	zb_ep.attr<kAttrZ>() = float(acc.z.val1) + float(acc.z.val2) / 1000'000.f;
 	zb_ep.attr<kAttrStatus1>() = 0;
+	g_Flip.CheckFlip(acc);//providing initial values
 	printk("Accel X: %d; Y: %d; Z: %d;\r\n", acc.x.val1, acc.y.val1, acc.z.val1);
     }else
     {
@@ -331,7 +357,7 @@ void on_zigbee_start()
     g_ZigbeeReady = true;
     zb_zcl_poll_control_start(0, kACCEL_EP);
     //zb_zcl_poll_controll_register_cb(&udpate_accel_values);
-    g_PeriodicAccel.Setup([]{ udpate_accel_values(0); return true; }, 10000);
+    //g_PeriodicAccel.Setup([]{ udpate_accel_values(0); return true; }, 10000);
 
     if constexpr (kPowerSaving)
     {
