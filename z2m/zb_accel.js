@@ -239,7 +239,7 @@ const orlangurAccelExtended = {
             },
             {
                 cluster: 'customAccel',
-                type: ['commandOn_sleep_up'],
+                type: ['commandOn_sleep'],
                 convert: (model, msg, publish, options, meta) => {
                     var x = msg.data.x;
                     var y = msg.data.y;
