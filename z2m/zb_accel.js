@@ -18,17 +18,86 @@ const ea = exposes.access;
 const NS = 'zhc:orlangur';
 
 const orlangurAccelExtended = {
-    accelConfig: () => {
+    extendedStatus: () => {
         const exposes = [
-            e.binary('activity_x', ea.ALL, 1, 0).withCategory('config').withDescription('Sensing activity on X'),
-            e.binary('activity_y', ea.ALL, 1, 0).withCategory('config').withDescription('Sensing activity on Y'),
-            e.binary('activity_z', ea.ALL, 1, 0).withCategory('config').withDescription('Sensing activity on Z'),
+            e.numeric('status1', ea.STATE_GET).withLabel('Status1').withCategory('diagnostic'),
+            e.numeric('status2', ea.STATE_GET).withLabel('Status2').withCategory('diagnostic'),
+            e.numeric('status3', ea.STATE_GET).withLabel('Status3').withCategory('diagnostic'),
+        ];
+
+        const fromZigbee = [
+            {
+                cluster: 'customStatus',
+                type: ['attributeReport', 'readResponse'],
+                convert: (model, msg, publish, options, meta) => {
+                    const result = {};
+                    if (data['status1'] !== undefined) 
+                        result['status1'] = data['status1'];
+                    if (data['status2'] !== undefined) 
+                        result['status2'] = data['status2'];
+                    if (data['status3'] !== undefined) 
+                        result['status3'] = data['status3'];
+                    return result
+                }
+            }
+        ];
+
+        const toZigbee = [
+            {
+                key: ['status1', 'status2', 'status3'],
+                convertGet: async (entity, key, meta) => {
+                    await entity.read('customStatus', [key]);
+                },
+            }
+        ];
+
+        return {
+            exposes,
+            fromZigbee,
+            toZigbee,
+            isModernExtend: true,
+        };
+    },
+    accelConfig: () => {
+        const sleep_odr = {
+            "Same"  : 0,
+            "1.6 Hz"  : 1,
+            "3 Hz"  : 2,
+            "6 Hz"  : 3,
+        };
+
+        const exposes = [
+            e.binary('enable_x', ea.ALL, 1, 0).withCategory('config').withDescription('Sensing activity on X'),
+            e.binary('enable_y', ea.ALL, 1, 0).withCategory('config').withDescription('Sensing activity on Y'),
+            e.binary('enable_z', ea.ALL, 1, 0).withCategory('config').withDescription('Sensing activity on Z'),
+            e.binary('track_wake_up', ea.ALL, 1, 0).withCategory('config').withDescription('Track wake-up events'),
+            e.binary('track_sleep', ea.ALL, 1, 0).withCategory('config').withDescription('Track sleep events'),
+            e.binary('track_flip', ea.ALL, 1, 0).withCategory('config').withDescription('Track flip events'),
+            e.numeric('wake_sleep_threshold', ea.ALL)
+                .withCategory('config')
+                // .withValueMin(0)
+                // .withValueMax(100)
+                .withDescription('Wake Sleep Threshold')
+                .withLabel('Wake Sleep Threshold'),
+            e.numeric('sleep_duration', ea.ALL)
+                .withCategory('config')
+                // .withValueMin(0)
+                // .withValueMax(100)
+                .withDescription('Sleep Duration')
+                .withLabel('Sleep Duration'),
+            e.enum('sleep_odr', ea.ALL, Object.keys(sleep_odr))
+                .withCategory('config')
+                .withDescription('Sleep ODR')
+                .withLabel('Sleep ODR'),
         ];
 
         const cfg_bits = {
-            activity_x  : 0,
-            activity_y  : 1,
-            activity_z  : 2,
+            enable_x       : 0,
+            enable_y       : 1,
+            enable_z       : 2,
+            track_wake_up  : 3,
+            track_sleep    : 4,
+            track_flip     : 5,
         };
 
         const fromZigbee = [
@@ -45,9 +114,24 @@ const orlangurAccelExtended = {
                         buffer.writeUInt8(data['flags']);
                         const b0 = buffer.readUInt8(0);
                         const set_cfg = (name, b0) => { result[name] = (b0 >> cfg_bits[name]) & 1; };
-                        set_cfg('activity_x', b0);
-                        set_cfg('activity_y', b0);
-                        set_cfg('activity_z', b0);
+                        set_cfg('enable_x', b0);
+                        set_cfg('enable_y', b0);
+                        set_cfg('enable_z', b0);
+                        set_cfg('track_wake_up', b0);
+                        set_cfg('track_sleep', b0);
+                        set_cfg('track_flip', b0);
+                    }
+
+                    if (data['wake_sleep_threshold'] !== undefined)
+                        result['wake_sleep_threshold'] = data['wake_sleep_threshold'];
+                    if (data['sleep_duration'] !== undefined)
+                        result['sleep_duration'] = data['sleep_duration'];
+                    if (data['sleep_odr'] !== undefined)
+                    {
+                        const v = data['sleep_odr']
+                        const entry = Object.entries(sleep_odr).find(([_,val])=> val == v)
+                        if (entry)
+                            result['sleep_odr'] = entry[0];//key
                     }
 
                     if (Object.keys(result).length == 0) 
@@ -58,20 +142,42 @@ const orlangurAccelExtended = {
             }
         ];
 
-        const toZigbee = [{
-            key: ['activity_x', 'activity_y', 'activity_z'],
-            convertSet: async (entity, key, value, meta) => {
-                //read current state
-                const readResult = await entity.read('customConfig', ['flags']);
-                //update the requested bit
-                const newVal = (readResult.flags & ~(1 << cfg_bits[key])) | (value << cfg_bits[key])
-                await entity.write('customConfig', {['flags']: newVal});
-                return {state: {[key]: value}};
+        const toZigbee = [
+            {
+                key: ['enable_x', 'enable_y', 'enable_z', 'track_wake_up', 'track_sleep', 'track_flip'],
+                convertSet: async (entity, key, value, meta) => {
+                    //read current state
+                    const readResult = await entity.read('customConfig', ['flags']);
+                    //update the requested bit
+                    const newVal = (readResult.flags & ~(1 << cfg_bits[key])) | (value << cfg_bits[key])
+                    await entity.write('customConfig', {['flags']: newVal});
+                    return {state: {[key]: value}};
+                },
+                convertGet: async (entity, key, meta) => {
+                    await entity.read('customConfig', ['flags']);
+                },
             },
-            convertGet: async (entity, key, meta) => {
-                await entity.read('customConfig', ['flags']);
+            {
+                key: ['wake_sleep_threshold', 'sleep_duration'],
+                convertSet: async (entity, key, value, meta) => {
+                    await entity.write('customConfig', {[key]: value});
+                    return {state: {[key]: value}};
+                },
+                convertGet: async (entity, key, meta) => {
+                    await entity.read('customConfig', [key]);
+                },
             },
-        }];
+            {
+                key: ['sleep_odr'],
+                convertSet: async (entity, key, value, meta) => {
+                    await entity.write('customConfig', {[key]: sleep_odr[value]});
+                    return {state: {[key]: value}};
+                },
+                convertGet: async (entity, key, meta) => {
+                    await entity.read('customConfig', [key]);
+                },
+            }
+        ];
 
         return {
             exposes,
@@ -97,13 +203,9 @@ const orlangurAccelExtended = {
                             .withLabel('Z')
                             .withCategory('diagnostic')
                             .withDescription('Acceleration on Z axis'),
-            e.numeric('LastEvent', ea.STATE_GET)
-                            .withLabel('LastEvent')
-                            .withCategory('diagnostic'),
-            e.numeric('EventCount', ea.STATE_GET)
-                            .withLabel('Event Count')
-                            .withCategory('diagnostic'),
-            e.enum('in_event', ea.SET, ['On']).withLabel('Send Test Cmd').withDescription('Send Test Cmd Descr'),
+            e.text('WakeUp', ea.STATE_GET).withLabel('Last Wake Up').withCategory('diagnostic'),
+            e.text('Sleep', ea.STATE_GET).withLabel('Last Sleep').withCategory('diagnostic'),
+            e.text('Flip', ea.STATE_GET).withLabel('Last Flip').withCategory('diagnostic'),
         ];
 
         const fromZigbee = [
@@ -127,11 +229,33 @@ const orlangurAccelExtended = {
             },
             {
                 cluster: 'customAccel',
-                type: ['commandOn_event'],
+                type: ['commandOn_wake_up'],
                 convert: (model, msg, publish, options, meta) => {
-                    var cnt = meta.state.EventCount;
-                    if (cnt === null) cnt = 0;
-                    return {LastEvent: msg.data.flags, EventCount: cnt + 1};
+                    var x = msg.data.x;
+                    var y = msg.data.y;
+                    var z = msg.data.z;
+                    return {WakeUp: `${new Date().toLocaleString()}: x:${x}; y:${y}; z:${z};`};
+                }
+            },
+            {
+                cluster: 'customAccel',
+                type: ['commandOn_sleep_up'],
+                convert: (model, msg, publish, options, meta) => {
+                    var x = msg.data.x;
+                    var y = msg.data.y;
+                    var z = msg.data.z;
+                    return {Sleep: `${new Date().toLocaleString()}: x:${x}; y:${y}; z:${z};`};
+                }
+            },
+            {
+                cluster: 'customAccel',
+                type: ['commandOn_flip'],
+                convert: (model, msg, publish, options, meta) => {
+                    var f = msg.data.flags;
+                    var x = (f & (1 << 0)) != 0;
+                    var y = (f & (1 << 1)) != 0;
+                    var z = (f & (1 << 2)) != 0;
+                    return {Flip: `${new Date().toLocaleString()}: x:${x}; y:${y}; z:${z};`};
                 }
             }
         ];
@@ -141,12 +265,6 @@ const orlangurAccelExtended = {
                 key: ['X','Y','Z'],
                 convertGet: async (entity, key, meta) => {
                     await entity.read('customAccel', [key]);
-                },
-            },
-            {
-                key: ['in_event'],
-                convertSet: async (entity, key, value, meta) => {
-                    await entity.command('customAccel', 'on_in_event', {param1:5, param2:meta.state.EventCount}, {});
                 },
             },
         ];
@@ -175,13 +293,25 @@ const definition = {
                 Z: {ID: 0x0002, type: Zcl.DataType.SINGLE_PREC},
             },
             commands: {
-                on_event: {
+                on_wake_up: {
                     ID: 100,
-                    parameters: [{name: 'flags', type: Zcl.DataType.UINT32}],
+                    parameters: [
+                        {name: 'x', type: Zcl.DataType.SINGLE_PREC}
+                        ,{name: 'y', type: Zcl.DataType.SINGLE_PREC}
+                        ,{name: 'z', type: Zcl.DataType.SINGLE_PREC}
+                    ],
                 },
-                on_in_event: {
+                on_sleep: {
                     ID: 101,
-                    parameters: [{name: 'param1', type: Zcl.DataType.UINT8}, {name: 'param2', type: Zcl.DataType.UINT16}],
+                    parameters: [
+                        {name: 'x', type: Zcl.DataType.SINGLE_PREC}
+                        ,{name: 'y', type: Zcl.DataType.SINGLE_PREC}
+                        ,{name: 'z', type: Zcl.DataType.SINGLE_PREC}
+                    ],
+                },
+                on_flip: {
+                    ID: 102,
+                    parameters: [{name: 'flags', type: Zcl.DataType.UINT8}]
                 },
             },
             commandsResponse: {}
@@ -190,18 +320,33 @@ const definition = {
             ID: 0xfc01,
             attributes: {
                 flags: {ID: 0x0000, type: Zcl.DataType.BITMAP32},
+                wake_sleep_threshold: {ID: 0x0001, type: Zcl.DataType.UINT8},
+                sleep_duration: {ID: 0x0002, type: Zcl.DataType.UINT8},
+                sleep_odr: {ID: 0x0003, type: Zcl.DataType.ENUM8},
+            },
+            commands: {},
+            commandsResponse: {}
+        }),
+        deviceAddCustomCluster('customStatus', {
+            ID: 0xfc80,
+            attributes: {
+                status1: {ID: 0x0000, type: Zcl.DataType.UINT16},
+                status2: {ID: 0x0001, type: Zcl.DataType.UINT16},
+                status3: {ID: 0x0002, type: Zcl.DataType.UINT16},
             },
             commands: {},
             commandsResponse: {}
         }),
         orlangurAccelExtended.acceleration(),
         orlangurAccelExtended.accelConfig(),
+        orlangurAccelExtended.extendedStatus(),
     ],
     configure: async (device, coordinatorEndpoint) => {
         const endpoint = device.getEndpoint(1);
         await reporting.bind(endpoint, coordinatorEndpoint, ['customAccel']);
         await endpoint.read('customAccel', ['X','Y','Z']);
-        await endpoint.read('customConfig', [ 'flags' ]);
+        await endpoint.read('customConfig', [ 'flags', 'wake_sleep_threshold', 'sleep_duration', 'sleep_odr' ]);
+        await endpoint.read('customStatus', [ 'status1', 'status2', 'status3']);
         await endpoint.configureReporting('customAccel', [
             {
                 attribute: 'X',
@@ -224,6 +369,33 @@ const definition = {
                 minimumReportInterval: 30,
                 maximumReportInterval: constants.repInterval.HOUR,
                 reportableChange: 0.1,
+            },
+        ]);
+
+        await endpoint.configureReporting('customStatus', [
+            {
+                attribute: 'status1',
+                minimumReportInterval: 30,
+                maximumReportInterval: constants.repInterval.HOUR,
+                reportableChange: 1,
+            },
+        ]);
+
+        await endpoint.configureReporting('customStatus', [
+            {
+                attribute: 'status2',
+                minimumReportInterval: 30,
+                maximumReportInterval: constants.repInterval.HOUR,
+                reportableChange: 1,
+            },
+        ]);
+
+        await endpoint.configureReporting('customStatus', [
+            {
+                attribute: 'status3',
+                minimumReportInterval: 30,
+                maximumReportInterval: constants.repInterval.HOUR,
+                reportableChange: 1,
             },
         ]);
     },
