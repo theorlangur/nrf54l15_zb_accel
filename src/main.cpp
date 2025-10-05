@@ -215,8 +215,10 @@ void on_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
     printk("zb: on_cmd_sent id:%d; status: %d\r\n", cmd_id, status->status);
 }
 
+static constinit thread::SyncVar<bool> g_SleepZbPosted{false};
 void on_sleep_zb(uint8_t buf)
 {
+    g_SleepZbPosted = false;
     printk("zb: sleep detected\r\n");
     if (!g_ZigbeeReady)
     {
@@ -253,12 +255,21 @@ void on_sleep_zb(uint8_t buf)
 void on_sleep(const struct device *dev, const struct sensor_trigger *trigger)
 {
     //post on Zigbee thread and run immedieately
-    printk("sleep detected -> zb\r\n");
-    zb_schedule_app_alarm(on_sleep_zb, 0, 0);
+    if (!g_SleepZbPosted.exchange(true))
+    {
+	printk("sleep detected -> zb\r\n");
+	zb_schedule_app_alarm(on_sleep_zb, 0, 0);
+    }
+    else
+    {
+	printk("sleep detected -> dropped\r\n");
+    }
 }
 
+static constinit thread::SyncVar<bool> g_WakeUpZbPosted{false};
 void on_wake_up_zb(uint8_t buf)
 {
+    g_WakeUpZbPosted = false;
     printk("zb: wake up detected\r\n");
     if (!g_ZigbeeReady)
     {
@@ -288,8 +299,14 @@ void on_wake_up_zb(uint8_t buf)
 void on_wake_up(const struct device *dev, const struct sensor_trigger *trigger)
 {
     //post on Zigbee thread and run immedieately
-    printk("wake up detected -> zb\r\n");
-    zb_schedule_app_alarm(on_wake_up_zb, 0, 0);
+    if (!g_WakeUpZbPosted.exchange(true))
+    {
+	printk("wake up detected -> zb\r\n");
+	zb_schedule_app_alarm(on_wake_up_zb, 0, 0);
+    }else
+    {
+	printk("wake up detected -> dropped\r\n");
+    }
 }
 
 void reconfigure_interrupts()
@@ -298,6 +315,13 @@ void reconfigure_interrupts()
     bool xyz_enabled = dev_ctx.settings.flags.enable_x || dev_ctx.settings.flags.enable_y || dev_ctx.settings.flags.enable_z;
     if (xyz_enabled && (dev_ctx.settings.flags.track_sleep || dev_ctx.settings.flags.track_flip))
     {
+	g_SleepTrigger.wake_cfg.x_enable = dev_ctx.settings.flags.enable_x;
+	g_SleepTrigger.wake_cfg.y_enable = dev_ctx.settings.flags.enable_y;
+	g_SleepTrigger.wake_cfg.z_enable = dev_ctx.settings.flags.enable_z;
+	g_SleepTrigger.wake_cfg.sleep_duration = dev_ctx.settings.sleep_duration;
+	g_SleepTrigger.wake_cfg.wake_threshold = dev_ctx.settings.wake_sleep_threshold;
+	g_SleepTrigger.wake_cfg.inactive_odr = (lis2du12_sleep_odr_t)dev_ctx.settings.sleep_odr;
+
 	ret = sensor_trigger_set(accel_dev, &g_SleepTrigger.trig, &on_sleep);
 	if (ret != 0) printk("Failed to set sleep trigger\r\n");
 	else printk("Enabled sleep interrupts\r\n");
@@ -310,6 +334,11 @@ void reconfigure_interrupts()
 
     if (xyz_enabled && dev_ctx.settings.flags.track_wake_up)
     {
+	g_WakeUpTrigger.wake_cfg.x_enable = dev_ctx.settings.flags.enable_x;
+	g_WakeUpTrigger.wake_cfg.y_enable = dev_ctx.settings.flags.enable_y;
+	g_WakeUpTrigger.wake_cfg.z_enable = dev_ctx.settings.flags.enable_z;
+	g_WakeUpTrigger.wake_cfg.wake_threshold = dev_ctx.settings.wake_sleep_threshold;
+
 	ret = sensor_trigger_set(accel_dev, &g_WakeUpTrigger.trig, &on_wake_up);
 	if (ret != 0) printk("Failed to set wake up trigger\r\n");
 	else printk("Enabled wake up interrupts\r\n");
