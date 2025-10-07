@@ -77,6 +77,19 @@ constexpr auto kAttrBattPercentage = &zb::zb_zcl_power_cfg_battery_info_t::batt_
 
 constexpr uint32_t kPowerCycleThresholdSeconds = 6 * 60 - 1; //Just under 6 minutes
 
+
+/**********************************************************************/
+/* Persisten settings                                                 */
+/**********************************************************************/
+#define SETTINGS_ZB_ACCEL_SUBTREE "zb_accel"
+struct ZbSettingsEntries
+{
+    inline static constexpr const char flags[] = SETTINGS_ZB_ACCEL_SUBTREE "/accel_flags";
+    inline static constexpr const char wake_sleep_threshold[] = SETTINGS_ZB_ACCEL_SUBTREE "/wake_sleep_threshold";
+    inline static constexpr const char sleep_duration[] = SETTINGS_ZB_ACCEL_SUBTREE "/sleep_duration";
+    inline static constexpr const char sleep_tracking_rate[] = SETTINGS_ZB_ACCEL_SUBTREE "/sleep_tracking_rate";
+};
+
 using namespace zb::literals;
 /* Zigbee device application context storage. */
 static constinit device_ctx_t dev_ctx{
@@ -378,6 +391,12 @@ void on_settings_changed(const uint32_t &v)
     reconfigure_interrupts();
 }
 
+void on_wake_sleep_settings_changed()
+{
+    printk("Settings changed\r\n");
+    reconfigure_interrupts();
+}
+
 zb::ZbTimerExt16 g_PeriodicAccel;
 
 void on_zigbee_start()
@@ -487,6 +506,34 @@ int main(void)
 	    .attribute = zb::kZB_ATTR_ID_MAIN_SETTINGS
 	},
 	zb::to_handler_v<on_settings_changed>
+	, zb::settings_v<ZbSettingsEntries::flags, dev_ctx.settings.flags_dw>
+      }
+    , zb::set_attr_val_gen_desc_t{
+	{
+	    .ep = kACCEL_EP,
+	    .cluster = zb::kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS,
+	    .attribute = zb::kZB_ATTR_ID_WAKE_SLEEP_THRESHOLD
+	},
+	zb::to_handler_v<on_wake_sleep_settings_changed>
+	, zb::settings_v<ZbSettingsEntries::wake_sleep_threshold, dev_ctx.settings.wake_sleep_threshold>
+      }
+    , zb::set_attr_val_gen_desc_t{
+	{
+	    .ep = kACCEL_EP,
+	    .cluster = zb::kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS,
+	    .attribute = zb::kZB_ATTR_ID_SLEEP_DURATION
+	},
+	zb::to_handler_v<on_wake_sleep_settings_changed>
+	, zb::settings_v<ZbSettingsEntries::sleep_duration, dev_ctx.settings.sleep_duration>
+      }
+    , zb::set_attr_val_gen_desc_t{
+	{
+	    .ep = kACCEL_EP,
+	    .cluster = zb::kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS,
+	    .attribute = zb::kZB_ATTR_ID_SLEEP_TRACKING_RATE
+	},
+	zb::to_handler_v<on_wake_sleep_settings_changed>
+	, zb::settings_v<ZbSettingsEntries::sleep_tracking_rate, dev_ctx.settings.sleep_odr>
       }
     >;
     ZB_ZCL_REGISTER_DEVICE_CB(dev_cb);
@@ -496,6 +543,8 @@ int main(void)
 
     printk("Main: before settings load\r\n");
     err = settings_load();
+
+    //settings_save_one(, const void *value, size_t val_len)
 
     if constexpr (kPowerSaving)
     {
@@ -511,3 +560,4 @@ int main(void)
     }
     return 0;
 }
+//SETTINGS_STATIC_HANDLER_DEFINE()
