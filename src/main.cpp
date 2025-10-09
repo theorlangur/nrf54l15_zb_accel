@@ -583,4 +583,4 @@ int main(void)
 }
 SETTINGS_STATIC_HANDLER_DEFINE(zigbee, SETTINGS_ZB_ACCEL_SUBTREE, NULL,
                               settings_mgr::zigbee_settings_set, NULL,
-                              NULL);
+                              settings_mgr::zigbee_settings_export);
