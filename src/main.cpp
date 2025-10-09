@@ -22,6 +22,7 @@
 #include <nrfzbcpp/zb_status_cluster_desc.hpp>
 
 #include <nrfzbcpp/zb_alarm.hpp>
+#include <nrfzbcpp/zb_settings.hpp>
 
 #include "zb/zb_accel_settings.hpp"
 #include "zb/zb_accel_cluster_desc.hpp"
@@ -137,6 +138,32 @@ struct zb::cluster_custom_handler_t<device_ctx_t::accel_type, kACCEL_EP>: cluste
     static auto& get_device() { return zb_ctx; }
 };
 
+
+/**********************************************************************/
+/* Settings stored                                                    */
+/**********************************************************************/
+using settings_mgr = zb::persistent_settings_manager<
+    sizeof(SETTINGS_ZB_ACCEL_SUBTREE)
+    ,zb::settings_entry{ZbSettingsEntries::flags, dev_ctx.settings.flags_dw}
+    ,zb::settings_entry{ZbSettingsEntries::wake_sleep_threshold, dev_ctx.settings.wake_sleep_threshold}
+    ,zb::settings_entry{ZbSettingsEntries::sleep_duration, dev_ctx.settings.sleep_duration}
+    ,zb::settings_entry{ZbSettingsEntries::sleep_tracking_rate, dev_ctx.settings.sleep_odr}
+>;
+
+template<auto h>
+constexpr zb::set_attr_value_handler_t to_settings_handler(const char *name)
+{
+    return settings_mgr::make_on_changed<zb::to_handler_v<h>>(name);
+}
+
+constexpr zb::set_attr_value_handler_t to_settings_handler(const char *name)
+{
+    return settings_mgr::make_on_changed<nullptr>(name);
+}
+
+/**********************************************************************/
+/* End of settings section                                            */
+/**********************************************************************/
 
 static bool g_ZigbeeReady = false;
 
@@ -505,8 +532,7 @@ int main(void)
 	    .cluster = zb::kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS,
 	    .attribute = zb::kZB_ATTR_ID_MAIN_SETTINGS
 	},
-	zb::to_handler_v<on_settings_changed>
-	, zb::settings_v<ZbSettingsEntries::flags, dev_ctx.settings.flags_dw>
+	to_settings_handler<on_settings_changed>(ZbSettingsEntries::flags)
       }
     , zb::set_attr_val_gen_desc_t{
 	{
@@ -514,8 +540,7 @@ int main(void)
 	    .cluster = zb::kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS,
 	    .attribute = zb::kZB_ATTR_ID_WAKE_SLEEP_THRESHOLD
 	},
-	zb::to_handler_v<on_wake_sleep_settings_changed>
-	, zb::settings_v<ZbSettingsEntries::wake_sleep_threshold, dev_ctx.settings.wake_sleep_threshold>
+	to_settings_handler<on_wake_sleep_settings_changed>(ZbSettingsEntries::wake_sleep_threshold)
       }
     , zb::set_attr_val_gen_desc_t{
 	{
@@ -523,8 +548,7 @@ int main(void)
 	    .cluster = zb::kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS,
 	    .attribute = zb::kZB_ATTR_ID_SLEEP_DURATION
 	},
-	zb::to_handler_v<on_wake_sleep_settings_changed>
-	, zb::settings_v<ZbSettingsEntries::sleep_duration, dev_ctx.settings.sleep_duration>
+	to_settings_handler<on_wake_sleep_settings_changed>(ZbSettingsEntries::sleep_duration)
       }
     , zb::set_attr_val_gen_desc_t{
 	{
@@ -532,8 +556,7 @@ int main(void)
 	    .cluster = zb::kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS,
 	    .attribute = zb::kZB_ATTR_ID_SLEEP_TRACKING_RATE
 	},
-	zb::to_handler_v<on_wake_sleep_settings_changed>
-	, zb::settings_v<ZbSettingsEntries::sleep_tracking_rate, dev_ctx.settings.sleep_odr>
+	to_settings_handler<on_wake_sleep_settings_changed>(ZbSettingsEntries::sleep_tracking_rate)
       }
     >;
     ZB_ZCL_REGISTER_DEVICE_CB(dev_cb);
@@ -543,8 +566,6 @@ int main(void)
 
     printk("Main: before settings load\r\n");
     err = settings_load();
-
-    //settings_save_one(, const void *value, size_t val_len)
 
     if constexpr (kPowerSaving)
     {
@@ -560,4 +581,6 @@ int main(void)
     }
     return 0;
 }
-//SETTINGS_STATIC_HANDLER_DEFINE()
+SETTINGS_STATIC_HANDLER_DEFINE(zigbee, SETTINGS_ZB_ACCEL_SUBTREE, NULL,
+                              settings_mgr::zigbee_settings_set, NULL,
+                              NULL);
