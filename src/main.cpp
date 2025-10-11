@@ -479,6 +479,12 @@ void on_dev_cb_error(int err)
     printk("on_dev_cb_error: %d\r\n", err);
 }
 
+settings_handler settings_zb_accel = { 
+			      .name = SETTINGS_ZB_ACCEL_SUBTREE,
+                              .h_set = settings_mgr::zigbee_settings_set,
+                              .h_export = settings_mgr::zigbee_settings_export
+};
+
 int main(void)
 {
     int ret;
@@ -508,6 +514,7 @@ int main(void)
 
     printk("Main: before settings init\r\n");
     int err = settings_subsys_init();
+    settings_register(&settings_zb_accel);
 
     printk("Main: before zigbee erase persistent storage\r\n");
     //TODO: implement a counter logic: if reset count reaches 3 -> zigbee reset
@@ -581,6 +588,3 @@ int main(void)
     }
     return 0;
 }
-SETTINGS_STATIC_HANDLER_DEFINE(zigbee, SETTINGS_ZB_ACCEL_SUBTREE, NULL,
-                              settings_mgr::zigbee_settings_set, NULL,
-                              settings_mgr::zigbee_settings_export);
