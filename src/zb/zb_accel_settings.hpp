@@ -1,6 +1,7 @@
 #ifndef ZB_ACCEL_SETTINGS_H_
 #define ZB_ACCEL_SETTINGS_H_
 
+#include "lis2du12_reg.h"
 #include <nrfzbcpp/zb_main.hpp>
 
 namespace zb
@@ -10,6 +11,7 @@ namespace zb
     static constexpr uint16_t kZB_ATTR_ID_WAKE_SLEEP_THRESHOLD = 0x0001;
     static constexpr uint16_t kZB_ATTR_ID_SLEEP_DURATION = 0x0002;
     static constexpr uint16_t kZB_ATTR_ID_SLEEP_TRACKING_RATE = 0x0003;
+    static constexpr uint16_t kZB_ATTR_ID_ACTIVE_TRACKING_RATE = 0x0004;
 
     enum class inactive_odr_t: uint8_t
     {
@@ -35,6 +37,7 @@ namespace zb
         uint8_t wake_sleep_threshold = 1;
         uint8_t sleep_duration = 0;
         inactive_odr_t sleep_odr = inactive_odr_t::Same;
+        uint8_t  active_odr = 0;/*lis2du12_odr_t*/ //0 - whatever is provided by dts
     };
 
     template<>
@@ -48,7 +51,8 @@ namespace zb
                     cluster_mem_desc_t{.m = &T::flags_dw,.id = kZB_ATTR_ID_MAIN_SETTINGS, .a=Access::RW, .type=Type::Map32}
                     ,cluster_mem_desc_t{.m = &T::wake_sleep_threshold,.id = kZB_ATTR_ID_WAKE_SLEEP_THRESHOLD, .a=Access::RW}
                     ,cluster_mem_desc_t{.m = &T::sleep_duration,.id = kZB_ATTR_ID_SLEEP_DURATION, .a=Access::RW}
-                    ,cluster_mem_desc_t{.m = &T::sleep_odr,.id = kZB_ATTR_ID_SLEEP_TRACKING_RATE, .a=Access::RW}
+                    ,cluster_mem_desc_t{.m = &T::sleep_odr,.id = kZB_ATTR_ID_SLEEP_TRACKING_RATE, .a=Access::RW, .type=Type::E8}
+                    ,cluster_mem_desc_t{.m = &T::active_odr,.id = kZB_ATTR_ID_ACTIVE_TRACKING_RATE, .a=Access::RW, .type=Type::E8}
                 >{}
             >{};
         }

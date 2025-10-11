@@ -89,6 +89,7 @@ struct ZbSettingsEntries
     inline static constexpr const char wake_sleep_threshold[] = SETTINGS_ZB_ACCEL_SUBTREE "/wake_sleep_threshold";
     inline static constexpr const char sleep_duration[] = SETTINGS_ZB_ACCEL_SUBTREE "/sleep_duration";
     inline static constexpr const char sleep_tracking_rate[] = SETTINGS_ZB_ACCEL_SUBTREE "/sleep_tracking_rate";
+    inline static constexpr const char active_tracking_rate[] = SETTINGS_ZB_ACCEL_SUBTREE "/active_tracking_rate";
 };
 
 using namespace zb::literals;
@@ -148,6 +149,7 @@ using settings_mgr = zb::persistent_settings_manager<
     ,zb::settings_entry{ZbSettingsEntries::wake_sleep_threshold, dev_ctx.settings.wake_sleep_threshold}
     ,zb::settings_entry{ZbSettingsEntries::sleep_duration, dev_ctx.settings.sleep_duration}
     ,zb::settings_entry{ZbSettingsEntries::sleep_tracking_rate, dev_ctx.settings.sleep_odr}
+    ,zb::settings_entry{ZbSettingsEntries::active_tracking_rate, dev_ctx.settings.active_odr}
 >;
 
 template<auto h>
@@ -418,6 +420,12 @@ void on_settings_changed(const uint32_t &v)
     reconfigure_interrupts();
 }
 
+void on_active_odr_changed(const uint8_t &v)
+{
+    printk("Changed active ODR to %X;\r\n", v);
+    lis2du12_set_odr(accel_dev, (lis2du12_odr_t)v);
+}
+
 void on_wake_sleep_settings_changed()
 {
     printk("Settings changed\r\n");
@@ -502,6 +510,13 @@ int main(void)
 
     if (device_is_ready(accel_dev))
     {
+	if (dev_ctx.settings.active_odr == 0)
+	    dev_ctx.settings.active_odr = lis2du12_get_odr(accel_dev);
+	else
+	{
+	    if (lis2du12_set_odr(accel_dev, (lis2du12_odr_t)dev_ctx.settings.active_odr) < 0)
+		dev_ctx.status_attr.status2 = -1;
+	}
 	reconfigure_interrupts();
     }else
     {
@@ -561,6 +576,14 @@ int main(void)
 	    .attribute = zb::kZB_ATTR_ID_SLEEP_TRACKING_RATE
 	},
 	to_settings_handler<on_wake_sleep_settings_changed>(ZbSettingsEntries::sleep_tracking_rate)
+      }
+    , zb::set_attr_val_gen_desc_t{
+	{
+	    .ep = kACCEL_EP,
+	    .cluster = zb::kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS,
+	    .attribute = zb::kZB_ATTR_ID_ACTIVE_TRACKING_RATE
+	},
+	to_settings_handler<on_active_odr_changed>(ZbSettingsEntries::active_tracking_rate)
       }
     >;
     ZB_ZCL_REGISTER_DEVICE_CB(dev_cb);
