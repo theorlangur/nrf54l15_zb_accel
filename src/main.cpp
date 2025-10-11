@@ -503,9 +503,6 @@ int main(void)
     if (device_is_ready(accel_dev))
     {
 	reconfigure_interrupts();
-	//ret = sensor_trigger_set(accel_dev, &g_WakeUpTrigger.trig, &on_wakeup);
-	//if (ret != 0) printk("Failed to set trigger on wakeup: %d\r\n", ret);
-	//else printk("Set trigger on wakeup\r\n");
     }else
     {
 	printk("Accelerometer is not ready\r\n");
