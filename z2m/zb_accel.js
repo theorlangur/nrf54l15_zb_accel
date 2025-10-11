@@ -66,6 +66,21 @@ const orlangurAccelExtended = {
             "6 Hz"  : 3,
         };
 
+        const active_odr = {
+            "Off"         : 0,
+            "1.6 Hz ULP"  : 1,
+            "3 Hz ULP"    : 2,
+            "6 Hz ULP"    : 3,
+            "6 Hz"        : 4,
+            "12.5 Hz"     : 5,
+            "25 Hz"       : 6,
+            "50 Hz"       : 7,
+            "100 Hz"      : 8,
+            "200 Hz"      : 9,
+            "400 Hz"      : 10,
+            "800 Hz"      : 11,
+        };
+
         const exposes = [
             e.binary('enable_x', ea.ALL, 1, 0).withCategory('config').withDescription('Sensing activity on X'),
             e.binary('enable_y', ea.ALL, 1, 0).withCategory('config').withDescription('Sensing activity on Y'),
@@ -89,6 +104,10 @@ const orlangurAccelExtended = {
                 .withCategory('config')
                 .withDescription('Sleep ODR')
                 .withLabel('Sleep ODR'),
+            e.enum('active_odr', ea.ALL, Object.keys(active_odr))
+                .withCategory('config')
+                .withDescription('Active ODR')
+                .withLabel('Active ODR'),
         ];
 
         const cfg_bits = {
@@ -133,6 +152,13 @@ const orlangurAccelExtended = {
                         if (entry)
                             result['sleep_odr'] = entry[0];//key
                     }
+                    if (data['active_odr'] !== undefined)
+                    {
+                        const v = data['active_odr']
+                        const entry = Object.entries(active_odr).find(([_,val])=> val == v)
+                        if (entry)
+                            result['active_odr'] = entry[0];//key
+                    }
 
                     if (Object.keys(result).length == 0) 
                         return;
@@ -166,11 +192,21 @@ const orlangurAccelExtended = {
                 convertGet: async (entity, key, meta) => {
                     await entity.read('customConfig', [key]);
                 },
-            },
-            {
+            }
+            ,{
                 key: ['sleep_odr'],
                 convertSet: async (entity, key, value, meta) => {
                     await entity.write('customConfig', {[key]: sleep_odr[value]});
+                    return {state: {[key]: value}};
+                },
+                convertGet: async (entity, key, meta) => {
+                    await entity.read('customConfig', [key]);
+                },
+            }
+            ,{
+                key: ['active_odr'],
+                convertSet: async (entity, key, value, meta) => {
+                    await entity.write('customConfig', {[key]: active_odr[value]});
                     return {state: {[key]: value}};
                 },
                 convertGet: async (entity, key, meta) => {
@@ -323,6 +359,7 @@ const definition = {
                 wake_sleep_threshold: {ID: 0x0001, type: Zcl.DataType.UINT8},
                 sleep_duration: {ID: 0x0002, type: Zcl.DataType.UINT8},
                 sleep_odr: {ID: 0x0003, type: Zcl.DataType.ENUM8},
+                active_odr: {ID: 0x0004, type: Zcl.DataType.ENUM8},
             },
             commands: {},
             commandsResponse: {}
