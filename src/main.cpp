@@ -10,6 +10,7 @@
 #include <zephyr/drivers/uart.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/settings/settings.h>
+#include <zephyr/drivers/adc.h>
 
 #include <ram_pwrdn.h>
 
@@ -185,6 +186,59 @@ static const struct device *const accel_dev = DEVICE_DT_GET(DT_NODELABEL(accel))
  * See the sample documentation for information on how to fix this.
  */
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
+
+
+/**********************************************************************/
+/* Battery management                                                 */
+/**********************************************************************/
+constexpr int32_t g_MaxBatteryVoltage = 1600;//mV
+constexpr int32_t g_MinBatteryVoltage = 900;//mV
+constexpr int32_t g_BatteryVoltageRange = g_MaxBatteryVoltage - g_MinBatteryVoltage;//mV
+										    //
+#define DT_SPEC_AND_COMMA(node_id, prop, idx) \
+	ADC_DT_SPEC_GET_BY_IDX(node_id, idx),
+
+static const struct adc_dt_spec adc_channels[] = {
+	DT_FOREACH_PROP_ELEM(DT_PATH(zephyr_user), io_channels,
+			     DT_SPEC_AND_COMMA)
+};
+
+void update_battery_state_zb(uint8_t dummy)
+{
+    uint16_t buf;
+    struct adc_sequence sequence = {
+	.buffer = &buf,
+	/* buffer size in bytes, not number of samples */
+	.buffer_size = sizeof(buf),
+    };
+    (void)adc_sequence_init_dt(&adc_channels[0], &sequence);
+
+    int err = adc_read_dt(&adc_channels[0], &sequence);
+    if (err == 0)
+    {
+	int32_t batteryVoltage = (int32_t)buf;
+	adc_raw_to_millivolts_dt(&adc_channels[0],
+		&batteryVoltage);
+
+	zb_ep.attr<kAttrBattVoltage>() = uint8_t(batteryVoltage / 100);
+	zb_ep.attr<kAttrBattPercentage>() = uint8_t((batteryVoltage - g_MinBatteryVoltage) * 200 / g_BatteryVoltageRange);
+    }
+}
+
+static int configure_adc(void)
+{
+    if (!adc_is_ready_dt(&adc_channels[0])) {
+	printk("ADC controller device %s not ready\n", adc_channels[0].dev->name);
+	return -1;
+    }
+
+    int err = adc_channel_setup_dt(&adc_channels[0]);
+    if (err < 0) {
+	printk("Could not setup channel #%d (%d)\n", 0, err);
+	return err;
+    }
+    return 0;
+}
 
 /**********************************************************************/
 /* Accelerometer stuff                                                */
@@ -432,14 +486,14 @@ void on_wake_sleep_settings_changed()
     reconfigure_interrupts();
 }
 
-zb::ZbTimerExt16 g_PeriodicAccel;
+//zb::ZbTimerExt16 g_PeriodicAccel;
 
 void on_zigbee_start()
 {
     printk("on_zigbee_start\r\n");
     g_ZigbeeReady = true;
     zb_zcl_poll_control_start(0, kACCEL_EP);
-    //zb_zcl_poll_controll_register_cb(&udpate_accel_values);
+    zb_zcl_poll_controll_register_cb(&update_battery_state_zb);
     //g_PeriodicAccel.Setup([]{ udpate_accel_values(0); return true; }, 10000);
 
     if constexpr (kPowerSaving)
@@ -452,6 +506,7 @@ void on_zigbee_start()
 
     //should be there already, initial state
     udpate_accel_values(0);
+    update_battery_state_zb(0);
 }
 
 /**@brief Zigbee stack event handler.
@@ -524,6 +579,9 @@ int main(void)
 	dev_ctx.status_attr.status1 = -1;
     }
 
+    printk("Main: before configuring ADC\r\n");
+    if (configure_adc() < 0)
+	return 0;
     printk("Main: before settings init\r\n");
     int err = settings_subsys_init();
     settings_register(&settings_zb_accel);
