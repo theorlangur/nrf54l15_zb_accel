@@ -1,7 +1,7 @@
 const { Buffer } = require('node:buffer');
 const util = require('node:util');
 const {Zcl} = require('zigbee-herdsman');
-const {enumLookup,numeric,deviceAddCustomCluster,onOff,binary} = require('zigbee-herdsman-converters/lib/modernExtend');
+const {enumLookup,numeric,deviceAddCustomCluster,onOff,binary, battery} = require('zigbee-herdsman-converters/lib/modernExtend');
 const fz = require('zigbee-herdsman-converters/converters/fromZigbee');
 const tz = require('zigbee-herdsman-converters/converters/toZigbee');
 const exposes = require('zigbee-herdsman-converters/lib/exposes');
@@ -367,9 +367,9 @@ const definition = {
         deviceAddCustomCluster('customStatus', {
             ID: 0xfc80,
             attributes: {
-                status1: {ID: 0x0000, type: Zcl.DataType.UINT16},
-                status2: {ID: 0x0001, type: Zcl.DataType.UINT16},
-                status3: {ID: 0x0002, type: Zcl.DataType.UINT16},
+                status1: {ID: 0x0000, type: Zcl.DataType.INT16},
+                status2: {ID: 0x0001, type: Zcl.DataType.INT16},
+                status3: {ID: 0x0002, type: Zcl.DataType.INT16},
             },
             commands: {},
             commandsResponse: {}
@@ -377,6 +377,10 @@ const definition = {
         orlangurAccelExtended.acceleration(),
         orlangurAccelExtended.accelConfig(),
         orlangurAccelExtended.extendedStatus(),
+        battery({
+            voltage: true, 
+            voltageReporting: true
+        })
     ],
     configure: async (device, coordinatorEndpoint) => {
         const endpoint = device.getEndpoint(1);
