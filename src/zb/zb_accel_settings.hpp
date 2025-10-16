@@ -1,7 +1,6 @@
 #ifndef ZB_ACCEL_SETTINGS_H_
 #define ZB_ACCEL_SETTINGS_H_
 
-#include "lis2du12_reg.h"
 #include <nrfzbcpp/zb_main.hpp>
 
 namespace zb
@@ -25,12 +24,12 @@ namespace zb
     {
         union{
             struct{
-                uint32_t enable_x      : 1 = 1;
-                uint32_t enable_y      : 1 = 1;
+                uint32_t enable_x      : 1 = 0;
+                uint32_t enable_y      : 1 = 0;
                 uint32_t enable_z      : 1 = 1;
                 uint32_t track_wake_up : 1 = 0;
                 uint32_t track_sleep   : 1 = 0;
-                uint32_t track_flip    : 1 = 0;
+                uint32_t track_flip    : 1 = 1;
             }flags{};
             uint32_t flags_dw;
         };
