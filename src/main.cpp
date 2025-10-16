@@ -5,6 +5,7 @@
  */
 
 
+#include <cmath>
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/uart.h>
@@ -29,8 +30,11 @@
 #include "zb/zb_accel_cluster_desc.hpp"
 
 #include <zephyr/drivers/sensor/lis2du12.h>
+//#include "lib/lib_msgq_typed.hpp"
+#include <dk_buttons_and_leds.h>
+#include "led.h"
 
-constexpr bool kPowerSaving = false;//true;
+constexpr bool kPowerSaving = true;
 
 /**********************************************************************/
 /* Zigbee Declarations and Definitions                                */
@@ -77,8 +81,6 @@ constexpr auto kAttrStatus1 = &zb::zb_zcl_status_t::status1;
 constexpr auto kAttrBattVoltage = &zb::zb_zcl_power_cfg_battery_info_t::batt_voltage;
 constexpr auto kAttrBattPercentage = &zb::zb_zcl_power_cfg_battery_info_t::batt_percentage_remaining;
 
-constexpr uint32_t kPowerCycleThresholdSeconds = 6 * 60 - 1; //Just under 6 minutes
-
 
 /**********************************************************************/
 /* Persisten settings                                                 */
@@ -105,7 +107,7 @@ static constinit device_ctx_t dev_ctx{
 	/*.model =*/ INIT_BASIC_MODEL_ID,
     },
 	.poll_ctrl = {
-	    .check_in_interval = 2_min_to_qs,
+	    .check_in_interval = 4_min_to_qs,
 	    .long_poll_interval = 60_min_to_qs,
 	    //.short_poll_interval = 1_sec_to_qs,
 	},
@@ -185,7 +187,7 @@ static const struct device *const accel_dev = DEVICE_DT_GET(DT_NODELABEL(accel))
  * A build error on this line means your board is unsupported.
  * See the sample documentation for information on how to fix this.
  */
-static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
+static const struct gpio_dt_spec led_dt = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
 
 /**********************************************************************/
@@ -205,6 +207,8 @@ static const struct adc_dt_spec adc_channels[] = {
 
 void update_battery_state_zb(uint8_t dummy)
 {
+    //bool rx_on_idle = zb_get_rx_on_when_idle();
+    //printk("update_battery_state_zb called (rx on idle=%d)\r\n", rx_on_idle);
     uint16_t buf;
     struct adc_sequence sequence = {
 	.buffer = &buf,
@@ -220,6 +224,7 @@ void update_battery_state_zb(uint8_t dummy)
 	adc_raw_to_millivolts_dt(&adc_channels[0],
 		&batteryVoltage);
 
+	printk("update_battery_state_zb: volt %d\r\n", batteryVoltage);
 	zb_ep.attr<kAttrBattVoltage>() = uint8_t(batteryVoltage / 100);
 	zb_ep.attr<kAttrBattPercentage>() = uint8_t((batteryVoltage - g_MinBatteryVoltage) * 200 / g_BatteryVoltageRange);
     }
@@ -407,6 +412,7 @@ void on_wake_up(const struct device *dev, const struct sensor_trigger *trigger)
 
 void reconfigure_interrupts()
 {
+    //return;
     int ret;
     bool xyz_enabled = dev_ctx.settings.flags.enable_x || dev_ctx.settings.flags.enable_y || dev_ctx.settings.flags.enable_z;
     if (xyz_enabled && (dev_ctx.settings.flags.track_sleep || dev_ctx.settings.flags.track_flip))
@@ -491,22 +497,31 @@ void on_wake_sleep_settings_changed()
 void on_zigbee_start()
 {
     printk("on_zigbee_start\r\n");
+    //printk("(rx on idle=%d; long poll: %d)\r\n", zb_get_rx_on_when_idle(), dev_ctx.poll_ctrl.long_poll_interval);
     g_ZigbeeReady = true;
     zb_zcl_poll_control_start(0, kACCEL_EP);
     zb_zcl_poll_controll_register_cb(&update_battery_state_zb);
+
     //g_PeriodicAccel.Setup([]{ udpate_accel_values(0); return true; }, 10000);
 
-    if constexpr (kPowerSaving)
-    {
+	   if constexpr (kPowerSaving)
+	   {
 	if (dev_ctx.poll_ctrl.long_poll_interval != 0xffffffff)
+	{
+	    printk("on_zigbee_start: long poll set to power save %d ms\r\n", (dev_ctx.poll_ctrl.long_poll_interval * 1000 / 4));
 	    zb_zdo_pim_set_long_poll_interval(dev_ctx.poll_ctrl.long_poll_interval * 1000 / 4);
-    }
-    else
+	}
+	   }
+	   else
+	   {
+	printk("on_zigbee_start: long poll set to non-power save\r\n");
 	zb_zdo_pim_set_long_poll_interval(1000 * 10);
+	   }
 
     //should be there already, initial state
     udpate_accel_values(0);
     update_battery_state_zb(0);
+    //zb_zdo_pim_get_long_poll_interval_req();
 }
 
 /**@brief Zigbee stack event handler.
@@ -519,7 +534,7 @@ void zboss_signal_handler(zb_bufid_t bufid)
         zb_zdo_app_signal_hdr_t *pHdr;
         auto signalId = zb_get_app_signal(bufid, &pHdr);
         zb_ret_t status = zb_buf_get_status(bufid);
-	printk("zboss: sig handler, sigid %d; status: %d\r\n", signalId, status);
+	//printk("zboss: sig handler, sigid %d; status: %d (rx on idle=%d; long poll: %d)\r\n", signalId, status, zb_get_rx_on_when_idle(), dev_ctx.poll_ctrl.long_poll_interval);
 	auto ret = zb::tpl_signal_handler<zb::sig_handlers_t{
 	.on_leave = +[]{ 
 	    zb_zcl_poll_control_stop(); 
@@ -529,7 +544,7 @@ void zboss_signal_handler(zb_bufid_t bufid)
 	    //.on_error = []{ led::show_pattern(led::kPATTERN_3_BLIPS_NORMED, 1000); },
 	    .on_dev_reboot = on_zigbee_start,
 	    .on_steering = on_zigbee_start,
-	    .on_can_sleep = &zb_sleep_now,
+	    .on_can_sleep = &zb_sleep_now
 	   }>(bufid);
     const uint32_t LOCAL_ERR_CODE = (uint32_t) (-ret);	
     if (LOCAL_ERR_CODE != RET_OK) {				
@@ -548,20 +563,62 @@ settings_handler settings_zb_accel = {
                               .h_export = settings_mgr::zigbee_settings_export
 };
 
+int8_t g_RestartsToFactoryResetLeft = 3;
+#define SETTINGS_DEV_SUBTREE "dev"
+#define SETTINGS_DEV_RESTARTS_LEFT "restarts_left"
+static int device_settings_set(const char *name, size_t len,
+	settings_read_cb read_cb, void *cb_arg)
+{
+    int rc;
+    bool found = false;
+    const char *next;
+    if (settings_name_steq(name, SETTINGS_DEV_RESTARTS_LEFT, &next) && !next) {
+	if (len != sizeof(g_RestartsToFactoryResetLeft))
+	    return -EINVAL;
+
+	rc = read_cb(cb_arg, &g_RestartsToFactoryResetLeft, sizeof(g_RestartsToFactoryResetLeft));
+	if (rc >= 0)
+	{
+	    if (rc != sizeof(g_RestartsToFactoryResetLeft))
+		return -EINVAL;
+	}
+	return 0;
+    }
+
+    return -ENOENT;
+}
+
+static int device_settings_export(int (*cb)(const char *name,
+	    const void *value, size_t val_len))
+{
+    return cb(SETTINGS_DEV_SUBTREE "/" SETTINGS_DEV_RESTARTS_LEFT, &g_RestartsToFactoryResetLeft, sizeof(g_RestartsToFactoryResetLeft));
+}
+
+settings_handler settings_dev = { 
+			      .name = "dev",
+                              .h_set = device_settings_set,
+                              .h_export = device_settings_export
+};
+zb::ZbAlarm g_ResetRestartsLeftAlarm;
+
 int main(void)
 {
     int ret;
     bool led_state = true;
 
     printk("Main start\r\n");
-    if (!gpio_is_ready_dt(&led)) {
-	return 0;
-    }
+    //   if (!gpio_is_ready_dt(&led_dt)) {
+    //return 0;
+    //   }
 
-    ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
-    if (ret < 0) {
+    //ret = gpio_pin_configure_dt(&led_dt, GPIO_OUTPUT_INACTIVE);
+    //if (ret < 0) {
+    //    return 0;
+    //}
+
+    if (led::setup() < 0)
 	return 0;
-    }
+    led::start();
 
     if (device_is_ready(accel_dev))
     {
@@ -585,18 +642,30 @@ int main(void)
     printk("Main: before settings init\r\n");
     int err = settings_subsys_init();
     settings_register(&settings_zb_accel);
+    settings_register(&settings_dev);
+
+    err = settings_load();
+
+    bool factory_reset = --g_RestartsToFactoryResetLeft <= 0;
+    if (factory_reset)
+	g_RestartsToFactoryResetLeft = 3;
+    settings_save_subtree(SETTINGS_DEV_SUBTREE);
+    if (factory_reset)
+    {
+	//blink with led
+	led::show_pattern(led::kPATTERN_3_BLIPS_NORMED, 1000); 
+    }
 
     printk("Main: before zigbee erase persistent storage\r\n");
-    //TODO: implement a counter logic: if reset count reaches 3 -> zigbee reset
-    //after 10 seconds of activity the count is reset to 0
-    zigbee_erase_persistent_storage(false);
+    zigbee_erase_persistent_storage(factory_reset);
     zb_set_ed_timeout(ED_AGING_TIMEOUT_64MIN);
     zb_set_keepalive_timeout(ZB_MILLISECONDS_TO_BEACON_INTERVAL(1000*60*30));
 
     if constexpr (kPowerSaving)
     {
-	zb_set_rx_on_when_idle(false);
+	//zb_set_rx_on_when_idle(false);
 	zigbee_configure_sleepy_behavior(true);
+	power_down_unused_ram();
     }
 
     /* Register callback for handling ZCL commands. */
@@ -649,16 +718,15 @@ int main(void)
     /* Register dimmer switch device context (endpoints). */
     ZB_AF_REGISTER_DEVICE_CTX(zb_ctx);
 
-    printk("Main: before settings load\r\n");
-    err = settings_load();
-
-    if constexpr (kPowerSaving)
-    {
-	power_down_unused_ram();
-    }
-
     printk("Main: before zigbee enable\r\n");
     zigbee_enable();
+    g_ResetRestartsLeftAlarm.Setup(
+	    [](void*)
+	    { 
+		g_RestartsToFactoryResetLeft = 3; 
+		settings_save_subtree(SETTINGS_DEV_SUBTREE);
+		printk("Restart left count reset\r\n");
+	    }, nullptr, 10 * 1000);
 
     printk("Main: sleep forever\r\n");
     while (1) {
