@@ -9,6 +9,7 @@ project(nrf54l15_breakout_test)
 
 target_sources(app PRIVATE 
         src/main.cpp
+        src/led.cpp
         submodules/esp_generic_lib/src/lib_linked_list.cpp
 )
 
