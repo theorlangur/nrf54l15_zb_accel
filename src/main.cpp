@@ -34,6 +34,9 @@
 #include "led.h"
 
 constexpr bool kPowerSaving = true;
+constexpr uint32_t kFactoryResetWaitMS = 5000;//3s if the dev doesn't join before that
+constexpr int8_t kRestartCountToFactoryReset = 3;
+constexpr uint32_t kRestartCounterResetTimeoutMS = 15000;//after 15s the restart counter is reset back to 3
 
 /**********************************************************************/
 /* Zigbee Declarations and Definitions                                */
@@ -468,8 +471,6 @@ void udpate_accel_values(uint8_t)
     }else
     {
 	zb_ep.attr<kAttrStatus1>() = -1;
-	//printk("Accel not ready");
-	//printk("Inv Delta: %.2lf\r\n", (double)g_inv_delta);
     }
 }
 
@@ -491,36 +492,65 @@ void on_wake_sleep_settings_changed()
     reconfigure_interrupts();
 }
 
-//zb::ZbTimerExt16 g_PeriodicAccel;
+zb::ZbAlarm g_FactoryResetOnNoJoin;
+static bool factory_reset_start = false;
+void factory_reset_settings()
+{
+    //blink with led
+    led::show_pattern(led::kPATTERN_3_BLIPS_NORMED, 1000); 
+
+    //resetting accelerotmeter settings to defaults
+    dev_ctx.battery_attr = {};
+    dev_ctx.poll_ctrl = {
+	.check_in_interval = 4_min_to_qs,
+	.long_poll_interval = 60_min_to_qs,
+    };
+    dev_ctx.accel_attr = {};
+    dev_ctx.status_attr = {};
+    dev_ctx.settings = {};
+    settings_save_subtree(SETTINGS_ZB_ACCEL_SUBTREE);
+    zigbee_pibcache_pan_id_clear();
+}
+
+void do_factory_reset(void*)
+{
+    factory_reset_start = false;
+    g_FactoryResetOnNoJoin.Cancel();
+    //factroy reset request is active
+    zb_bdb_reset_via_local_action(0);
+    factory_reset_settings();
+}
 
 void on_zigbee_start()
 {
     printk("on_zigbee_start\r\n");
-    //printk("(rx on idle=%d; long poll: %d)\r\n", zb_get_rx_on_when_idle(), dev_ctx.poll_ctrl.long_poll_interval);
     g_ZigbeeReady = true;
+    if (factory_reset_start)
+    {
+	do_factory_reset(nullptr);
+	return;
+    }
+
     zb_zcl_poll_control_start(0, kACCEL_EP);
     zb_zcl_poll_controll_register_cb(&update_battery_state_zb);
 
-    //g_PeriodicAccel.Setup([]{ udpate_accel_values(0); return true; }, 10000);
-
-	   if constexpr (kPowerSaving)
-	   {
+    if constexpr (kPowerSaving)
+    {
 	if (dev_ctx.poll_ctrl.long_poll_interval != 0xffffffff)
 	{
 	    printk("on_zigbee_start: long poll set to power save %d ms\r\n", (dev_ctx.poll_ctrl.long_poll_interval * 1000 / 4));
 	    zb_zdo_pim_set_long_poll_interval(dev_ctx.poll_ctrl.long_poll_interval * 1000 / 4);
 	}
-	   }
-	   else
-	   {
+    }
+    else
+    {
 	printk("on_zigbee_start: long poll set to non-power save\r\n");
 	zb_zdo_pim_set_long_poll_interval(1000 * 10);
-	   }
+    }
 
     //should be there already, initial state
     udpate_accel_values(0);
     update_battery_state_zb(0);
-    //zb_zdo_pim_get_long_poll_interval_req();
 }
 
 /**@brief Zigbee stack event handler.
@@ -533,7 +563,9 @@ void zboss_signal_handler(zb_bufid_t bufid)
         zb_zdo_app_signal_hdr_t *pHdr;
         auto signalId = zb_get_app_signal(bufid, &pHdr);
         zb_ret_t status = zb_buf_get_status(bufid);
-	//printk("zboss: sig handler, sigid %d; status: %d (rx on idle=%d; long poll: %d)\r\n", signalId, status, zb_get_rx_on_when_idle(), dev_ctx.poll_ctrl.long_poll_interval);
+	if (factory_reset_start && !g_FactoryResetOnNoJoin.IsRunning())
+	    g_FactoryResetOnNoJoin.Setup(do_factory_reset, nullptr, kFactoryResetWaitMS);
+
 	auto ret = zb::tpl_signal_handler<zb::sig_handlers_t{
 	.on_leave = +[]{ 
 	    zb_zcl_poll_control_stop(); 
@@ -606,15 +638,6 @@ int main(void)
     bool led_state = true;
 
     printk("Main start\r\n");
-    //   if (!gpio_is_ready_dt(&led_dt)) {
-    //return 0;
-    //   }
-
-    //ret = gpio_pin_configure_dt(&led_dt, GPIO_OUTPUT_INACTIVE);
-    //if (ret < 0) {
-    //    return 0;
-    //}
-
     if (led::setup() < 0)
 	return 0;
     led::start();
@@ -638,45 +661,30 @@ int main(void)
     printk("Main: before configuring ADC\r\n");
     if (configure_adc() < 0)
 	return 0;
+
     printk("Main: before settings init\r\n");
     int err = settings_subsys_init();
     settings_register(&settings_zb_accel);
     settings_register(&settings_dev);
 
     err = settings_load();
+    --g_RestartsToFactoryResetLeft;
+    factory_reset_start = g_RestartsToFactoryResetLeft == 0;
+    if (factory_reset_start)
+	led::show_pattern(led::kPATTERN_2_BLIPS_NORMED, 1000); 
 
-    bool factory_reset = --g_RestartsToFactoryResetLeft <= 0;
-    if (factory_reset)
-    {
-	g_RestartsToFactoryResetLeft = 3;
-	//restore zigbee accel settings to default
-    }
+    bool factory_reset_finish = g_RestartsToFactoryResetLeft < 0;
+    if (factory_reset_finish)
+	g_RestartsToFactoryResetLeft = kRestartCountToFactoryReset;
     settings_save_subtree(SETTINGS_DEV_SUBTREE);
-    if (factory_reset)
-    {
-	//blink with led
-	led::show_pattern(led::kPATTERN_3_BLIPS_NORMED, 1000); 
-
-	//resetting accelerotmeter settings to defaults
-	dev_ctx.battery_attr = {};
-	dev_ctx.poll_ctrl = {
-	    .check_in_interval = 4_min_to_qs,
-	    .long_poll_interval = 60_min_to_qs,
-	};
-	dev_ctx.accel_attr = {};
-	dev_ctx.status_attr = {};
-	dev_ctx.settings = {};
-	settings_save_subtree(SETTINGS_ZB_ACCEL_SUBTREE);
-    }
 
     printk("Main: before zigbee erase persistent storage\r\n");
-    zigbee_erase_persistent_storage(factory_reset);
+    zigbee_erase_persistent_storage(factory_reset_finish);
     zb_set_ed_timeout(ED_AGING_TIMEOUT_64MIN);
     zb_set_keepalive_timeout(ZB_MILLISECONDS_TO_BEACON_INTERVAL(1000*60*30));
 
     if constexpr (kPowerSaving)
     {
-	//zb_set_rx_on_when_idle(false);
 	zigbee_configure_sleepy_behavior(true);
 	power_down_unused_ram();
     }
@@ -736,10 +744,10 @@ int main(void)
     g_ResetRestartsLeftAlarm.Setup(
 	    [](void*)
 	    { 
-		g_RestartsToFactoryResetLeft = 3; 
+		g_RestartsToFactoryResetLeft = kRestartCountToFactoryReset; 
 		settings_save_subtree(SETTINGS_DEV_SUBTREE);
 		printk("Restart left count reset\r\n");
-	    }, nullptr, 10 * 1000);
+	    }, nullptr, kRestartCounterResetTimeoutMS);
 
     printk("Main: sleep forever\r\n");
     while (1) {
