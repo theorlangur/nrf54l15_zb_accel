@@ -33,18 +33,25 @@
 #include <dk_buttons_and_leds.h>
 #include "led.h"
 
+//allows using _min_to_qs and similar stuff
 using namespace zb::literals;
 
-constexpr bool kPowerSaving = true;
+/**********************************************************************/
+/* Configuration constants                                            */
+/**********************************************************************/
+constexpr bool kPowerSaving = true;//if this is change the MCU must be erased since that option persists otherwise
 constexpr uint32_t kFactoryResetWaitMS = 5000;//5s if the dev doesn't join before that
 constexpr int8_t kRestartCountToFactoryReset = 3;
 constexpr uint32_t kRestartCounterResetTimeoutMS = 15000;//after 15s the restart counter is reset back to 3
 
 constexpr auto kInitialCheckInInterval = 10_min_to_qs;
-constexpr auto kInitialLongPollInterval = 60_min_to_qs;
+constexpr auto kInitialLongPollInterval = 60_min_to_qs;//this has to be big in order for the device not to perform permanent parent requests
+
 /**********************************************************************/
 /* Zigbee Declarations and Definitions                                */
 /**********************************************************************/
+static bool g_ZigbeeReady = false;
+
 /* Manufacturer name (32 bytes). */
 #define INIT_BASIC_MANUF_NAME      "SFINAE"
 
@@ -60,7 +67,6 @@ constexpr auto kInitialLongPollInterval = 60_min_to_qs;
 
 /* Device endpoint, used to receive light controlling commands. */
 constexpr uint8_t kACCEL_EP = 1;
-
 constexpr uint16_t kDEV_ID = 0xDEAD;
 
 /* Main application customizable context.
@@ -77,6 +83,7 @@ struct device_ctx_t{
     zb::zb_zcl_accel_settings_t settings;
 };
 
+//attribute shortcuts for template arguments
 constexpr auto kAttrX = &device_ctx_t::accel_type::x;
 constexpr auto kAttrY = &device_ctx_t::accel_type::y;
 constexpr auto kAttrZ = &device_ctx_t::accel_type::z;
@@ -87,19 +94,6 @@ constexpr auto kAttrStatus1 = &zb::zb_zcl_status_t::status1;
 constexpr auto kAttrBattVoltage = &zb::zb_zcl_power_cfg_battery_info_t::batt_voltage;
 constexpr auto kAttrBattPercentage = &zb::zb_zcl_power_cfg_battery_info_t::batt_percentage_remaining;
 
-
-/**********************************************************************/
-/* Persisten settings                                                 */
-/**********************************************************************/
-#define SETTINGS_ZB_ACCEL_SUBTREE "zb_accel"
-struct ZbSettingsEntries
-{
-    inline static constexpr const char flags[] = SETTINGS_ZB_ACCEL_SUBTREE "/accel_flags";
-    inline static constexpr const char wake_sleep_threshold[] = SETTINGS_ZB_ACCEL_SUBTREE "/wake_sleep_threshold";
-    inline static constexpr const char sleep_duration[] = SETTINGS_ZB_ACCEL_SUBTREE "/sleep_duration";
-    inline static constexpr const char sleep_tracking_rate[] = SETTINGS_ZB_ACCEL_SUBTREE "/sleep_tracking_rate";
-    inline static constexpr const char active_tracking_rate[] = SETTINGS_ZB_ACCEL_SUBTREE "/active_tracking_rate";
-};
 
 /* Zigbee device application context storage. */
 static constinit device_ctx_t dev_ctx{
@@ -138,8 +132,11 @@ constinit static auto zb_ctx = zb::make_device(
 	    )
 	);
 
+//a shortcut for a convenient access
 constinit static auto &zb_ep = zb_ctx.ep<kACCEL_EP>();
 
+//magic handwaving to avoid otherwise necessary command handling boilerplate
+//uses CRTP so that cluster_custom_handler_base_t would know the end type it needs to work with
 template<> 
 struct zb::cluster_custom_handler_t<device_ctx_t::accel_type, kACCEL_EP>: cluster_custom_handler_base_t<custom_accel_handler_t>
 {
@@ -149,8 +146,21 @@ struct zb::cluster_custom_handler_t<device_ctx_t::accel_type, kACCEL_EP>: cluste
 
 
 /**********************************************************************/
-/* Settings stored                                                    */
+/* Persisten settings                                                 */
 /**********************************************************************/
+
+#define SETTINGS_ZB_ACCEL_SUBTREE "zb_accel"
+struct ZbSettingsEntries
+{
+    //had to define the strings like that or otherwise passing 'const char*' as a template parameter at a compile time doesn't work
+    //it needs to have an extrenal linking
+    inline static constexpr const char flags[] = SETTINGS_ZB_ACCEL_SUBTREE "/accel_flags";
+    inline static constexpr const char wake_sleep_threshold[] = SETTINGS_ZB_ACCEL_SUBTREE "/wake_sleep_threshold";
+    inline static constexpr const char sleep_duration[] = SETTINGS_ZB_ACCEL_SUBTREE "/sleep_duration";
+    inline static constexpr const char sleep_tracking_rate[] = SETTINGS_ZB_ACCEL_SUBTREE "/sleep_tracking_rate";
+    inline static constexpr const char active_tracking_rate[] = SETTINGS_ZB_ACCEL_SUBTREE "/active_tracking_rate";
+};
+
 using settings_mgr = zb::persistent_settings_manager<
     sizeof(SETTINGS_ZB_ACCEL_SUBTREE)
     ,zb::settings_entry{ZbSettingsEntries::flags, dev_ctx.settings.flags_dw}
@@ -160,6 +170,7 @@ using settings_mgr = zb::persistent_settings_manager<
     ,zb::settings_entry{ZbSettingsEntries::active_tracking_rate, dev_ctx.settings.active_odr}
 >;
 
+//helping constexpr template functions to wrap the change reaction logic into settings-storing logic
 template<auto h>
 constexpr zb::set_attr_value_handler_t to_settings_handler(const char *name)
 {
@@ -175,23 +186,13 @@ constexpr zb::set_attr_value_handler_t to_settings_handler(const char *name)
 /* End of settings section                                            */
 /**********************************************************************/
 
-static bool g_ZigbeeReady = false;
-
 /**********************************************************************/
 /* ZephyrOS devices                                                   */
 /**********************************************************************/
 
 /* The devicetree node identifier for the "led0" alias. */
 #define LED0_NODE DT_ALIAS(led0)
-
-//#define UART_DEVICE_NODE DT_CHOSEN(zephyr_console)
-//static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
-
 static const struct device *const accel_dev = DEVICE_DT_GET(DT_NODELABEL(accel));
-/*
- * A build error on this line means your board is unsupported.
- * See the sample documentation for information on how to fix this.
- */
 static const struct gpio_dt_spec led_dt = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
 
