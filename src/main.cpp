@@ -36,7 +36,7 @@
 using namespace zb::literals;
 
 constexpr bool kPowerSaving = true;
-constexpr uint32_t kFactoryResetWaitMS = 5000;//3s if the dev doesn't join before that
+constexpr uint32_t kFactoryResetWaitMS = 5000;//5s if the dev doesn't join before that
 constexpr int8_t kRestartCountToFactoryReset = 3;
 constexpr uint32_t kRestartCounterResetTimeoutMS = 15000;//after 15s the restart counter is reset back to 3
 
