@@ -33,11 +33,15 @@
 #include <dk_buttons_and_leds.h>
 #include "led.h"
 
+using namespace zb::literals;
+
 constexpr bool kPowerSaving = true;
 constexpr uint32_t kFactoryResetWaitMS = 5000;//3s if the dev doesn't join before that
 constexpr int8_t kRestartCountToFactoryReset = 3;
 constexpr uint32_t kRestartCounterResetTimeoutMS = 15000;//after 15s the restart counter is reset back to 3
 
+constexpr auto kInitialCheckInInterval = 10_min_to_qs;
+constexpr auto kInitialLongPollInterval = 60_min_to_qs;
 /**********************************************************************/
 /* Zigbee Declarations and Definitions                                */
 /**********************************************************************/
@@ -97,7 +101,6 @@ struct ZbSettingsEntries
     inline static constexpr const char active_tracking_rate[] = SETTINGS_ZB_ACCEL_SUBTREE "/active_tracking_rate";
 };
 
-using namespace zb::literals;
 /* Zigbee device application context storage. */
 static constinit device_ctx_t dev_ctx{
     .basic_attr = {
@@ -109,8 +112,8 @@ static constinit device_ctx_t dev_ctx{
 	/*.model =*/ INIT_BASIC_MODEL_ID,
     },
 	.poll_ctrl = {
-	    .check_in_interval = 4_min_to_qs,
-	    .long_poll_interval = 60_min_to_qs,
+	    .check_in_interval = kInitialCheckInInterval,
+	    .long_poll_interval = kInitialLongPollInterval,
 	    //.short_poll_interval = 1_sec_to_qs,
 	},
 	.accel_attr = {
@@ -502,8 +505,8 @@ void factory_reset_settings()
     //resetting accelerotmeter settings to defaults
     dev_ctx.battery_attr = {};
     dev_ctx.poll_ctrl = {
-	.check_in_interval = 4_min_to_qs,
-	.long_poll_interval = 60_min_to_qs,
+	.check_in_interval = kInitialCheckInInterval,
+	.long_poll_interval = kInitialLongPollInterval,
     };
     dev_ctx.accel_attr = {};
     dev_ctx.status_attr = {};
