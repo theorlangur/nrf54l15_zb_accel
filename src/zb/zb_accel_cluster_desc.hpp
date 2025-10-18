@@ -43,7 +43,10 @@ namespace zb
         uint8_t flip_x : 1 = 0;
         uint8_t flip_y : 1 = 0;
         uint8_t flip_z : 1 = 0;
-        uint8_t unused : 5 = 0;
+        uint8_t x_neg  : 1 = 0;
+        uint8_t y_neg  : 1 = 0;
+        uint8_t z_neg  : 1 = 0;
+        uint8_t unused : 2 = 0;
 
         explicit operator bool() const { return flip_x || flip_y || flip_z; }
     };

@@ -223,6 +223,7 @@ const orlangurAccelExtended = {
         };
     },
     acceleration: () => {
+        const flip_enums = ['pos', 'neg'];
         const exposes = [
             e.numeric('X', ea.STATE_GET)
                             .withUnit('g')
@@ -242,6 +243,18 @@ const orlangurAccelExtended = {
             e.text('WakeUp', ea.STATE_GET).withLabel('Last Wake Up').withCategory('diagnostic'),
             e.text('Sleep', ea.STATE_GET).withLabel('Last Sleep').withCategory('diagnostic'),
             e.text('Flip', ea.STATE_GET).withLabel('Last Flip').withCategory('diagnostic'),
+            e.enum('flip_x', ea.STATE, flip_enums)
+                .withCategory('diagnostic')
+                .withDescription('Last Flip X event orientation')
+                .withLabel('Last Flip X Orientation'),
+            e.enum('flip_y', ea.STATE, flip_enums)
+                .withCategory('diagnostic')
+                .withDescription('Last Flip Y event orientation')
+                .withLabel('Last Flip Y Orientation'),
+            e.enum('flip_z', ea.STATE, flip_enums)
+                .withCategory('diagnostic')
+                .withDescription('Last Flip Z event orientation')
+                .withLabel('Last Flip Z Orientation'),
         ];
 
         const fromZigbee = [
@@ -291,7 +304,15 @@ const orlangurAccelExtended = {
                     var x = (f & (1 << 0)) != 0;
                     var y = (f & (1 << 1)) != 0;
                     var z = (f & (1 << 2)) != 0;
-                    return {Flip: `${new Date().toLocaleString()}: x:${x}; y:${y}; z:${z};`};
+
+                    var x_neg = ((f >> 3) & 1);
+                    var y_neg = ((f >> 4) & 1);
+                    var z_neg = ((f >> 5) & 1);
+                    return {Flip: `${new Date().toLocaleString()}: x:${x}; y:${y}; z:${z};`
+                        , flip_x: flip_enums[x_neg]
+                        , flip_y: flip_enums[y_neg]
+                        , flip_z: flip_enums[z_neg]
+                    };
                 }
             }
         ];

@@ -44,7 +44,7 @@ constexpr uint32_t kFactoryResetWaitMS = 5000;//5s if the dev doesn't join befor
 constexpr int8_t kRestartCountToFactoryReset = 3;
 constexpr uint32_t kRestartCounterResetTimeoutMS = 15000;//after 15s the restart counter is reset back to 3
 
-constexpr auto kInitialCheckInInterval = 10_min_to_qs;
+constexpr auto kInitialCheckInInterval = 30_min_to_qs;
 constexpr auto kInitialLongPollInterval = 60_min_to_qs;//this has to be big in order for the device not to perform permanent parent requests
 
 /**********************************************************************/
@@ -295,11 +295,20 @@ struct FlipTracker
 	if (dev_ctx.settings.flags.track_flip)
 	{
 	    if (dev_ctx.settings.flags.enable_x)
+	    {
 		res.flip_x = TryUpdateMeasurement(newVals.x, m_LastMeasuredX);
+		res.x_neg = m_LastMeasuredX < 0;
+	    }
 	    if (dev_ctx.settings.flags.enable_y)
+	    {
 		res.flip_y = TryUpdateMeasurement(newVals.y, m_LastMeasuredY);
+		res.y_neg = m_LastMeasuredY < 0;
+	    }
 	    if (dev_ctx.settings.flags.enable_z)
+	    {
 		res.flip_z = TryUpdateMeasurement(newVals.z, m_LastMeasuredZ);
+		res.z_neg = m_LastMeasuredZ < 0;
+	    }
 	}
 	return res;
     }
