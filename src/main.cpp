@@ -525,6 +525,8 @@ void do_factory_reset(void*)
     factory_reset_settings();
 }
 
+zb::ZbAlarm g_EnterLowPowerLongPollMode;
+
 void on_zigbee_start()
 {
     printk("on_zigbee_start\r\n");
@@ -540,11 +542,15 @@ void on_zigbee_start()
 
     if constexpr (kPowerSaving)
     {
-	if (dev_ctx.poll_ctrl.long_poll_interval != 0xffffffff)
-	{
-	    printk("on_zigbee_start: long poll set to power save %d ms\r\n", (dev_ctx.poll_ctrl.long_poll_interval * 1000 / 4));
-	    zb_zdo_pim_set_long_poll_interval(dev_ctx.poll_ctrl.long_poll_interval * 1000 / 4);
-	}
+	//we start with 2-sec long poll for the first 30 seconds
+	zb_zdo_pim_set_long_poll_interval(1000 * 2);
+	g_EnterLowPowerLongPollMode.Setup([](void*){
+	    if (dev_ctx.poll_ctrl.long_poll_interval != 0xffffffff)
+	    {
+		printk("on_zigbee_start: long poll set to power save %d ms\r\n", (dev_ctx.poll_ctrl.long_poll_interval * 1000 / 4));
+		zb_zdo_pim_set_long_poll_interval(dev_ctx.poll_ctrl.long_poll_interval * 1000 / 4);
+	    }
+	}, nullptr, 30 * 1000);
     }
     else
     {
