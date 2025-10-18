@@ -30,7 +30,6 @@
 #include "zb/zb_accel_cluster_desc.hpp"
 
 #include <zephyr/drivers/sensor/lis2du12.h>
-//#include "lib/lib_msgq_typed.hpp"
 #include <dk_buttons_and_leds.h>
 #include "led.h"
 
@@ -648,12 +647,26 @@ int main(void)
 
     bool factory_reset = --g_RestartsToFactoryResetLeft <= 0;
     if (factory_reset)
+    {
 	g_RestartsToFactoryResetLeft = 3;
+	//restore zigbee accel settings to default
+    }
     settings_save_subtree(SETTINGS_DEV_SUBTREE);
     if (factory_reset)
     {
 	//blink with led
 	led::show_pattern(led::kPATTERN_3_BLIPS_NORMED, 1000); 
+
+	//resetting accelerotmeter settings to defaults
+	dev_ctx.battery_attr = {};
+	dev_ctx.poll_ctrl = {
+	    .check_in_interval = 4_min_to_qs,
+	    .long_poll_interval = 60_min_to_qs,
+	};
+	dev_ctx.accel_attr = {};
+	dev_ctx.status_attr = {};
+	dev_ctx.settings = {};
+	settings_save_subtree(SETTINGS_ZB_ACCEL_SUBTREE);
     }
 
     printk("Main: before zigbee erase persistent storage\r\n");

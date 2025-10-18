@@ -51,9 +51,9 @@ namespace zb
     template<accel_config_t cfg = {}>
     struct zb_zcl_accel_basic_t
     {
-        float x;//1.f == 1G
-        float y;//1.f == 1G
-        float z;//1.f == 1G
+        float x = {};//1.f == 1G
+        float y = {};//1.f == 1G
+        float z = {};//1.f == 1G
         [[no_unique_address]]cluster_std_cmd_desc_with_pool_size_t<kZB_ZCL_ACCEL_CMD_WAKE_UP_EVENT, cfg.on_event_pool_size, MeasuredAccelValues> on_wake_up;
         [[no_unique_address]]cluster_std_cmd_desc_with_pool_size_t<kZB_ZCL_ACCEL_CMD_SLEEP_EVENT, cfg.on_event_pool_size, MeasuredAccelValues> on_sleep;
         [[no_unique_address]]cluster_std_cmd_desc_with_pool_size_t<kZB_ZCL_ACCEL_CMD_FLIP_EVENT, cfg.on_event_pool_size, flip_event_arg_t> on_flip;
