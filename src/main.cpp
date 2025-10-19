@@ -43,6 +43,7 @@ constexpr bool kPowerSaving = true;//if this is change the MCU must be erased si
 constexpr uint32_t kFactoryResetWaitMS = 5000;//5s if the dev doesn't join before that
 constexpr int8_t kRestartCountToFactoryReset = 3;
 constexpr uint32_t kRestartCounterResetTimeoutMS = 15000;//after 15s the restart counter is reset back to 3
+constexpr uint32_t kKeepAliveTimeout = 1000*60*30;//30min
 
 constexpr auto kInitialCheckInInterval = 30_min_to_qs;
 constexpr auto kInitialLongPollInterval = 60_min_to_qs;//this has to be big in order for the device not to perform permanent parent requests
@@ -613,7 +614,7 @@ settings_handler settings_zb_accel = {
                               .h_export = settings_mgr::zigbee_settings_export
 };
 
-int8_t g_RestartsToFactoryResetLeft = 3;
+int8_t g_RestartsToFactoryResetLeft = kRestartCountToFactoryReset;
 #define SETTINGS_DEV_SUBTREE "dev"
 #define SETTINGS_DEV_RESTARTS_LEFT "restarts_left"
 static int device_settings_set(const char *name, size_t len,
@@ -700,7 +701,7 @@ int main(void)
     printk("Main: before zigbee erase persistent storage\r\n");
     zigbee_erase_persistent_storage(factory_reset_finish);
     zb_set_ed_timeout(ED_AGING_TIMEOUT_64MIN);
-    zb_set_keepalive_timeout(ZB_MILLISECONDS_TO_BEACON_INTERVAL(1000*60*30));
+    zb_set_keepalive_timeout(ZB_MILLISECONDS_TO_BEACON_INTERVAL(kKeepAliveTimeout));
 
     if constexpr (kPowerSaving)
     {
