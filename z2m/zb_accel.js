@@ -406,6 +406,7 @@ const definition = {
     configure: async (device, coordinatorEndpoint) => {
         const endpoint = device.getEndpoint(1);
         await reporting.bind(endpoint, coordinatorEndpoint, ['customAccel']);
+        await reporting.bind(endpoint, coordinatorEndpoint, ['customStatus']);
         await endpoint.read('customAccel', ['X','Y','Z']);
         await endpoint.read('customConfig', [ 'flags', 'wake_sleep_threshold', 'sleep_duration', 'sleep_odr' ]);
         await endpoint.read('customStatus', [ 'status1', 'status2', 'status3']);
