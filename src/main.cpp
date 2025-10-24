@@ -92,9 +92,19 @@ constexpr auto kCmdOnWakeUpEvent = &device_ctx_t::accel_type::on_wake_up;
 constexpr auto kCmdOnSleepEvent = &device_ctx_t::accel_type::on_sleep;
 constexpr auto kCmdOnFlipEvent = &device_ctx_t::accel_type::on_flip;
 constexpr auto kAttrStatus1 = &zb::zb_zcl_status_t::status1;
+constexpr auto kAttrStatus2 = &zb::zb_zcl_status_t::status2;
+constexpr auto kAttrStatus3 = &zb::zb_zcl_status_t::status3;
 constexpr auto kAttrBattVoltage = &zb::zb_zcl_power_cfg_battery_info_t::batt_voltage;
 constexpr auto kAttrBattPercentage = &zb::zb_zcl_power_cfg_battery_info_t::batt_percentage_remaining;
 
+constexpr int kSleepSendStatusBit1 = 0;
+constexpr int kSleepSendStatusCodeOffset = 1;
+constexpr int kFlipSendStatusBit1 = 5;
+constexpr int kFlipSendStatusCodeOffset = 6;
+constexpr int kWakeUpSendStatusBit1 = 10;
+constexpr int kWakeUpSendStatusCodeOffset = 11;
+
+constexpr int kStatusCodeSize = 4;
 
 /* Zigbee device application context storage. */
 static constinit device_ctx_t dev_ctx{
@@ -327,9 +337,61 @@ static lis2du12_trigger g_SleepTrigger{
     .wake_cfg = { .x_enable=0, .y_enable=0, .z_enable = 1, .sleep_on = 1, .sleep_duration = 15, .wake_threshold = 1, .wake_duration = 0}
 };
 
-void on_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
+void on_sleep_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
 {
-    printk("zb: on_cmd_sent id:%d; status: %d\r\n", cmd_id, status->status);
+    printk("zb: on_sleep_cmd_sent id:%d; status: %d\r\n", cmd_id, status->status);
+
+    int16_t newStatus3 = dev_ctx.status_attr.status3;
+    constexpr int16_t kMask = (int16_t(1) << kStatusCodeSize) - 1;
+    if (status->status < 0)
+    {
+	int16_t code = 0x0f;
+	if (status->status >= -8)
+	    code = -status->status;
+	newStatus3 = (newStatus3 & (~(kMask << kSleepSendStatusCodeOffset))) | (code << kSleepSendStatusCodeOffset);
+    }else
+	newStatus3 &= ~(kMask << kSleepSendStatusCodeOffset);
+
+    if (newStatus3 != dev_ctx.status_attr.status3)
+	zb_ep.attr<kAttrStatus3>() = newStatus3;
+}
+
+void on_flip_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
+{
+    printk("zb: on_flip_cmd_sent id:%d; status: %d\r\n", cmd_id, status->status);
+
+    int16_t newStatus3 = dev_ctx.status_attr.status3;
+    constexpr int16_t kMask = (int16_t(1) << kStatusCodeSize) - 1;
+    if (status->status < 0)
+    {
+	int16_t code = 0x0f;
+	if (status->status >= -8)
+	    code = -status->status;
+	newStatus3 = (newStatus3 & (~(kMask << kFlipSendStatusCodeOffset))) | (code << kFlipSendStatusCodeOffset);
+    }else
+	newStatus3 &= ~(kMask << kFlipSendStatusCodeOffset);
+
+    if (newStatus3 != dev_ctx.status_attr.status3)
+	zb_ep.attr<kAttrStatus3>() = newStatus3;
+}
+
+void on_wake_up_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
+{
+    printk("zb: on_wake_up_cmd_sent id:%d; status: %d\r\n", cmd_id, status->status);
+
+    int16_t newStatus3 = dev_ctx.status_attr.status3;
+    constexpr int16_t kMask = (int16_t(1) << kStatusCodeSize) - 1;
+    if (status->status < 0)
+    {
+	int16_t code = 0x0f;
+	if (status->status >= -8)
+	    code = -status->status;
+	newStatus3 = (newStatus3 & (~(kMask << kWakeUpSendStatusCodeOffset))) | (code << kWakeUpSendStatusCodeOffset);
+    }else
+	newStatus3 &= ~(kMask << kWakeUpSendStatusCodeOffset);
+
+    if (newStatus3 != dev_ctx.status_attr.status3)
+	zb_ep.attr<kAttrStatus3>() = newStatus3;
 }
 
 static constinit thread::SyncVar<bool> g_SleepZbPosted{false};
@@ -359,14 +421,34 @@ void on_sleep_zb(uint8_t buf)
     zb_ep.attr<kAttrY>() = y;
     zb_ep.attr<kAttrZ>() = z;
 
+    int16_t newStatus3 = dev_ctx.status_attr.status3;
     if (dev_ctx.settings.flags.track_sleep)
-	zb_ep.send_cmd<kCmdOnSleepEvent, {.cb=on_cmd_sent}>(vals);
+    {
+	auto id = zb_ep.send_cmd<kCmdOnSleepEvent, {.cb=on_sleep_cmd_sent}>(vals);
+	bool failed_to_send = !id;
+	if (((newStatus3 & kSleepSendStatusBit1) != 0) != failed_to_send)
+	{
+	    constexpr int16_t kMask = int16_t(1) << kSleepSendStatusBit1;
+	    newStatus3 = (newStatus3 & ~kMask) | (failed_to_send * kMask);
+	}
+    }
     if (dev_ctx.settings.flags.track_flip)
     {
 	auto flipRes = g_Flip.CheckFlip(acc);
 	if (flipRes)
-	    zb_ep.send_cmd<kCmdOnFlipEvent, {.cb=on_cmd_sent}>(flipRes);
+	{
+	    auto id = zb_ep.send_cmd<kCmdOnFlipEvent, {.cb=on_flip_cmd_sent}>(flipRes);
+	    bool failed_to_send = !id;
+	    if (((newStatus3 & kFlipSendStatusBit1) != 0) != failed_to_send)
+	    {
+		constexpr int16_t kMask = int16_t(1) << kFlipSendStatusBit1;
+		newStatus3 = (newStatus3 & ~kMask) | (failed_to_send * kMask);
+	    }
+	}
     }
+
+    if (newStatus3 != dev_ctx.status_attr.status3)
+	zb_ep.attr<kAttrStatus3>() = newStatus3;
 }
 
 void on_sleep(const struct device *dev, const struct sensor_trigger *trigger)
@@ -410,7 +492,20 @@ void on_wake_up_zb(uint8_t buf)
     zb_ep.attr<kAttrY>() = y;
     zb_ep.attr<kAttrZ>() = z;
 
-    zb_ep.send_cmd<kCmdOnWakeUpEvent, {.cb=on_cmd_sent}>(vals);
+    int16_t newStatus3 = dev_ctx.status_attr.status3;
+
+    {
+	auto id = zb_ep.send_cmd<kCmdOnWakeUpEvent, {.cb=on_wake_up_cmd_sent}>(vals);
+	bool failed_to_send = !id;
+	if (((newStatus3 & kWakeUpSendStatusBit1) != 0) != failed_to_send)
+	{
+	    constexpr int16_t kMask = int16_t(1) << kWakeUpSendStatusBit1;
+	    newStatus3 = (newStatus3 & ~kMask) | (failed_to_send * kMask);
+	}
+    }
+
+    if (newStatus3 != dev_ctx.status_attr.status3)
+	zb_ep.attr<kAttrStatus3>() = newStatus3;
 }
 
 void on_wake_up(const struct device *dev, const struct sensor_trigger *trigger)
