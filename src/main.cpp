@@ -492,7 +492,7 @@ void on_sleep_zb(uint8_t buf)
     int16_t newStatus3 = dev_ctx.status_attr.status3;
     if (dev_ctx.settings.flags.track_sleep)
     {
-	auto id = zb_ep.send_cmd<kCmdOnSleepEvent, {.cb=on_sleep_cmd_sent}>(vals);
+	auto id = zb_ep.send_cmd<kCmdOnSleepEvent, {.cb=on_sleep_cmd_sent, .timeout_ms = 5000}>(vals);
 	bool failed_to_send = !id;
 	if (((newStatus3 & kSleepSendStatusBit1) != 0) != failed_to_send)
 	{
@@ -507,7 +507,7 @@ void on_sleep_zb(uint8_t buf)
 	auto flipRes = g_Flip.CheckFlip(acc);
 	if (flipRes)
 	{
-	    auto id = zb_ep.send_cmd<kCmdOnFlipEvent, {.cb=on_flip_cmd_sent}>(flipRes);
+	    auto id = zb_ep.send_cmd<kCmdOnFlipEvent, {.cb=on_flip_cmd_sent, .timeout_ms = 5000}>(flipRes);
 	    bool failed_to_send = !id;
 	    if (((newStatus3 & kFlipSendStatusBit1) != 0) != failed_to_send)
 	    {
@@ -561,7 +561,7 @@ void on_wake_up_zb(uint8_t buf)
     int16_t newStatus3 = dev_ctx.status_attr.status3;
 
     {
-	auto id = zb_ep.send_cmd<kCmdOnWakeUpEvent, {.cb=on_wake_up_cmd_sent}>(vals);
+	auto id = zb_ep.send_cmd<kCmdOnWakeUpEvent, {.cb=on_wake_up_cmd_sent, .timeout_ms = 5000}>(vals);
 	bool failed_to_send = !id;
 	if (((newStatus3 & kWakeUpSendStatusBit1) != 0) != failed_to_send)
 	{
