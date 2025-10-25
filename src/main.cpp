@@ -263,8 +263,74 @@ static int configure_adc(void)
 }
 
 /**********************************************************************/
+/* FloodGate tool                                                     */
+/**********************************************************************/
+//there may be no more than 1 request in process
+//the rest will be registered as a re-trigger requests and will be processed (re-triggered)
+//at the end
+template<zb_callback_t cb>
+struct FloodGate
+{
+    bool RequestProcessing()
+    {
+	if (!m_ZbPosted.exchange(true))
+	{
+	    m_ExpectedCount = 1;
+	    zb_schedule_app_alarm(cb, 0, 0);
+	    return true;
+	}else
+	    m_ReTriggerRequest = true;
+	return false;
+    }
+
+    bool ProcessingDone()
+    {
+	if (--m_ExpectedCount)
+	    return false;
+
+	if (m_ReTriggerRequest.exchange(false))
+	    return RequestProcessing();
+	return false;
+    }
+
+    struct FinishAtEnd
+    {
+	FinishAtEnd(FloodGate &fg):m_Gate(fg){}
+	~FinishAtEnd() { m_Gate.ProcessingDone(); }
+
+	FinishAtEnd(FinishAtEnd const&rhs) = delete;
+	FinishAtEnd(FinishAtEnd &&rhs) = delete;
+	FinishAtEnd& operator=(FinishAtEnd const&rhs) = delete;
+	FinishAtEnd& operator=(FinishAtEnd &rhs) = delete;
+
+	void WaitForOneMore(){
+	    ++m_Gate.m_ExpectedCount;
+	}
+
+	FloodGate &m_Gate;
+    };
+
+    FinishAtEnd GetFinishingBlock()
+    {
+	return {*this};
+    }
+
+    thread::SyncVar<bool> m_ZbPosted{false};
+    thread::SyncVar<bool> m_ReTriggerRequest{false};
+    int m_ExpectedCount = 0;
+};
+
+/**********************************************************************/
 /* Accelerometer stuff                                                */
 /**********************************************************************/
+
+//forward declaration to get it into a template arg
+void on_sleep_zb(uint8_t buf);
+void on_wake_up_zb(uint8_t buf);
+
+static constinit FloodGate<on_sleep_zb> g_SleepGate{};
+static constinit FloodGate<on_wake_up_zb> g_WakeUpGate{};
+
 struct accel_val
 {
     sensor_value x;
@@ -339,6 +405,7 @@ static lis2du12_trigger g_SleepTrigger{
 
 void on_sleep_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
 {
+    auto processingDone = g_SleepGate.GetFinishingBlock();
     printk("zb: on_sleep_cmd_sent id:%d; status: %d\r\n", cmd_id, status->status);
 
     int16_t newStatus3 = dev_ctx.status_attr.status3;
@@ -358,6 +425,7 @@ void on_sleep_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status
 
 void on_flip_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
 {
+    auto processingDone = g_SleepGate.GetFinishingBlock();
     printk("zb: on_flip_cmd_sent id:%d; status: %d\r\n", cmd_id, status->status);
 
     int16_t newStatus3 = dev_ctx.status_attr.status3;
@@ -377,6 +445,7 @@ void on_flip_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
 
 void on_wake_up_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
 {
+    auto processingDone = g_WakeUpGate.GetFinishingBlock();
     printk("zb: on_wake_up_cmd_sent id:%d; status: %d\r\n", cmd_id, status->status);
 
     int16_t newStatus3 = dev_ctx.status_attr.status3;
@@ -394,10 +463,9 @@ void on_wake_up_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *stat
 	zb_ep.attr<kAttrStatus3>() = newStatus3;
 }
 
-static constinit thread::SyncVar<bool> g_SleepZbPosted{false};
 void on_sleep_zb(uint8_t buf)
 {
-    g_SleepZbPosted = false;
+    auto processingDone = g_SleepGate.GetFinishingBlock();
     printk("zb: sleep detected\r\n");
     if (!g_ZigbeeReady)
     {
@@ -431,6 +499,8 @@ void on_sleep_zb(uint8_t buf)
 	    constexpr int16_t kMask = int16_t(1) << kSleepSendStatusBit1;
 	    newStatus3 = (newStatus3 & ~kMask) | (failed_to_send * kMask);
 	}
+	if (!failed_to_send)
+	    processingDone.WaitForOneMore();
     }
     if (dev_ctx.settings.flags.track_flip)
     {
@@ -444,6 +514,8 @@ void on_sleep_zb(uint8_t buf)
 		constexpr int16_t kMask = int16_t(1) << kFlipSendStatusBit1;
 		newStatus3 = (newStatus3 & ~kMask) | (failed_to_send * kMask);
 	    }
+	    if (!failed_to_send)
+		processingDone.WaitForOneMore();
 	}
     }
 
@@ -454,21 +526,15 @@ void on_sleep_zb(uint8_t buf)
 void on_sleep(const struct device *dev, const struct sensor_trigger *trigger)
 {
     //post on Zigbee thread and run immedieately
-    if (!g_SleepZbPosted.exchange(true))
-    {
+    if (g_SleepGate.RequestProcessing())
 	printk("sleep detected -> zb\r\n");
-	zb_schedule_app_alarm(on_sleep_zb, 0, 0);
-    }
     else
-    {
 	printk("sleep detected -> dropped\r\n");
-    }
 }
 
-static constinit thread::SyncVar<bool> g_WakeUpZbPosted{false};
 void on_wake_up_zb(uint8_t buf)
 {
-    g_WakeUpZbPosted = false;
+    auto processingDone = g_WakeUpGate.GetFinishingBlock();
     printk("zb: wake up detected\r\n");
     if (!g_ZigbeeReady)
     {
@@ -502,6 +568,9 @@ void on_wake_up_zb(uint8_t buf)
 	    constexpr int16_t kMask = int16_t(1) << kWakeUpSendStatusBit1;
 	    newStatus3 = (newStatus3 & ~kMask) | (failed_to_send * kMask);
 	}
+
+	if (!failed_to_send)//we've sent cmd. finishing in the cmd handler
+	    processingDone.WaitForOneMore();
     }
 
     if (newStatus3 != dev_ctx.status_attr.status3)
@@ -511,14 +580,10 @@ void on_wake_up_zb(uint8_t buf)
 void on_wake_up(const struct device *dev, const struct sensor_trigger *trigger)
 {
     //post on Zigbee thread and run immedieately
-    if (!g_WakeUpZbPosted.exchange(true))
-    {
+    if (g_WakeUpGate.RequestProcessing())
 	printk("wake up detected -> zb\r\n");
-	zb_schedule_app_alarm(on_wake_up_zb, 0, 0);
-    }else
-    {
-	printk("wake up detected -> dropped\r\n");
-    }
+    else
+	printk("wake up detected -> postponed\r\n");
 }
 
 void reconfigure_interrupts()
