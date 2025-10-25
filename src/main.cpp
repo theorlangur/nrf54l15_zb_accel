@@ -393,6 +393,29 @@ struct FlipTracker
 
 FlipTracker g_Flip;
 
+/**********************************************************************/
+/* Error handling tools                                               */
+/**********************************************************************/
+constexpr const int16_t kErrorFailedToSend = 0x0e;
+constexpr const int16_t kErrorUnknown = 0x0f;
+int16_t status_to_error_code(zb_zcl_command_send_status_t *status)
+{
+    int16_t code = 0;
+    if (!status)
+	code = 0x0e;
+    else if (status->status < 0) 
+    {
+	if (status->status >= -8)
+	    code = -status->status;
+	else
+	    code = 0x0f;
+    }
+    return code;
+}
+
+/**********************************************************************/
+/* ZephyrOS triggers                                                  */
+/**********************************************************************/
 static lis2du12_trigger g_WakeUpTrigger{ 
     .trig={.type = (enum sensor_trigger_type)LIS2DU12_TRIG_WAKE_UP, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
     .wake_cfg = { .x_enable=0, .y_enable=0, .z_enable = 1, .wake_threshold = 1, .wake_duration = 1}
@@ -406,17 +429,14 @@ static lis2du12_trigger g_SleepTrigger{
 void on_sleep_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
 {
     auto processingDone = g_SleepGate.GetFinishingBlock();
-    printk("zb: on_sleep_cmd_sent id:%d; status: %d\r\n", cmd_id, status->status);
+    int16_t code = status_to_error_code(status);
+    printk("zb: on_sleep_cmd_sent id:%d; status: %d\r\n", cmd_id, -code);
 
     int16_t newStatus3 = dev_ctx.status_attr.status3;
     constexpr int16_t kMask = (int16_t(1) << kStatusCodeSize) - 1;
-    if (status->status < 0)
-    {
-	int16_t code = 0x0f;
-	if (status->status >= -8)
-	    code = -status->status;
+    if (code != 0)
 	newStatus3 = (newStatus3 & (~(kMask << kSleepSendStatusCodeOffset))) | (code << kSleepSendStatusCodeOffset);
-    }else
+    else
 	newStatus3 &= ~(kMask << kSleepSendStatusCodeOffset);
 
     if (newStatus3 != dev_ctx.status_attr.status3)
@@ -426,17 +446,14 @@ void on_sleep_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status
 void on_flip_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
 {
     auto processingDone = g_SleepGate.GetFinishingBlock();
-    printk("zb: on_flip_cmd_sent id:%d; status: %d\r\n", cmd_id, status->status);
+    int16_t code = status_to_error_code(status);
+    printk("zb: on_flip_cmd_sent id:%d; status: %d\r\n", cmd_id, -code);
 
     int16_t newStatus3 = dev_ctx.status_attr.status3;
     constexpr int16_t kMask = (int16_t(1) << kStatusCodeSize) - 1;
-    if (status->status < 0)
-    {
-	int16_t code = 0x0f;
-	if (status->status >= -8)
-	    code = -status->status;
+    if (code != 0)
 	newStatus3 = (newStatus3 & (~(kMask << kFlipSendStatusCodeOffset))) | (code << kFlipSendStatusCodeOffset);
-    }else
+    else
 	newStatus3 &= ~(kMask << kFlipSendStatusCodeOffset);
 
     if (newStatus3 != dev_ctx.status_attr.status3)
@@ -446,17 +463,14 @@ void on_flip_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
 void on_wake_up_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
 {
     auto processingDone = g_WakeUpGate.GetFinishingBlock();
-    printk("zb: on_wake_up_cmd_sent id:%d; status: %d\r\n", cmd_id, status->status);
+    int16_t code = status_to_error_code(status);
+    printk("zb: on_wake_up_cmd_sent id:%d; status: %d\r\n", cmd_id, -code);
 
     int16_t newStatus3 = dev_ctx.status_attr.status3;
     constexpr int16_t kMask = (int16_t(1) << kStatusCodeSize) - 1;
-    if (status->status < 0)
-    {
-	int16_t code = 0x0f;
-	if (status->status >= -8)
-	    code = -status->status;
+    if (code != 0)
 	newStatus3 = (newStatus3 & (~(kMask << kWakeUpSendStatusCodeOffset))) | (code << kWakeUpSendStatusCodeOffset);
-    }else
+    else
 	newStatus3 &= ~(kMask << kWakeUpSendStatusCodeOffset);
 
     if (newStatus3 != dev_ctx.status_attr.status3)
