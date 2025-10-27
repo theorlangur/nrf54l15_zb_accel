@@ -31,6 +31,7 @@ const orlangurAccelExtended = {
                 type: ['attributeReport', 'readResponse'],
                 convert: (model, msg, publish, options, meta) => {
                     const result = {};
+                    const data = msg.data;
                     if (data['status1'] !== undefined) 
                         result['status1'] = data['status1'];
                     if (data['status2'] !== undefined) 
