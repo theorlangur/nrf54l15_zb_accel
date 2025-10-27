@@ -45,7 +45,7 @@ constexpr int8_t kRestartCountToFactoryReset = 3;
 constexpr uint32_t kRestartCounterResetTimeoutMS = 15000;//after 15s the restart counter is reset back to 3
 constexpr uint32_t kKeepAliveTimeout = 1000*60*30;//30min
 
-constexpr auto kInitialCheckInInterval = 30_min_to_qs;
+constexpr auto kInitialCheckInInterval = 2_min_to_qs;
 constexpr auto kInitialLongPollInterval = 60_min_to_qs;//this has to be big in order for the device not to perform permanent parent requests
 
 /**********************************************************************/
@@ -402,6 +402,9 @@ void on_sleep_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status
 
     if (newStatus3 != dev_ctx.status_attr.status3)
 	zb_ep.attr<kAttrStatus3>() = newStatus3;
+
+    printk("cmd internals stats after sleep sent\r\n");
+    zb_ep.dump_info<kCmdOnFlipEvent, kCmdOnSleepEvent, kCmdOnWakeUpEvent>();
 }
 
 void on_flip_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
@@ -419,6 +422,9 @@ void on_flip_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
 
     if (newStatus3 != dev_ctx.status_attr.status3)
 	zb_ep.attr<kAttrStatus3>() = newStatus3;
+
+    printk("cmd internals stats after flip sent\r\n");
+    zb_ep.dump_info<kCmdOnFlipEvent, kCmdOnSleepEvent, kCmdOnWakeUpEvent>();
 }
 
 void on_wake_up_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
@@ -464,6 +470,9 @@ void on_sleep_zb(uint8_t buf)
     zb_ep.attr<kAttrY>() = y;
     zb_ep.attr<kAttrZ>() = z;
 
+    printk("cmd internals stats on_sleep_zb begin\r\n");
+    zb_ep.dump_info<kCmdOnFlipEvent, kCmdOnSleepEvent, kCmdOnWakeUpEvent>();
+
     int16_t newStatus3 = dev_ctx.status_attr.status3;
     if (dev_ctx.settings.flags.track_sleep)
     {
@@ -490,12 +499,18 @@ void on_sleep_zb(uint8_t buf)
 		newStatus3 = (newStatus3 & ~kMask) | (failed_to_send * kMask);
 	    }
 	    if (!failed_to_send)
+	    {
 		processingDone.WaitForOneMore();
+		zb_ep.attr<kAttrStatus2>() = *id;
+	    }
 	}
     }
 
     if (newStatus3 != dev_ctx.status_attr.status3)
 	zb_ep.attr<kAttrStatus3>() = newStatus3;
+
+    printk("cmd internals stats on_sleep_zb end\r\n");
+    zb_ep.dump_info<kCmdOnFlipEvent, kCmdOnSleepEvent, kCmdOnWakeUpEvent>();
 }
 
 void on_sleep(const struct device *dev, const struct sensor_trigger *trigger)
@@ -545,7 +560,10 @@ void on_wake_up_zb(uint8_t buf)
 	}
 
 	if (!failed_to_send)//we've sent cmd. finishing in the cmd handler
+	{
 	    processingDone.WaitForOneMore();
+	    zb_ep.attr<kAttrStatus2>() = *id;
+	}
     }
 
     if (newStatus3 != dev_ctx.status_attr.status3)
@@ -672,6 +690,12 @@ void do_factory_reset(void*)
 
 zb::ZbAlarm g_EnterLowPowerLongPollMode;
 
+void on_check_in(uint8_t param)
+{
+    printk("on_check_in\r\n");
+    update_battery_state_zb(param);
+}
+
 void on_zigbee_start()
 {
     printk("on_zigbee_start\r\n");
@@ -684,7 +708,7 @@ void on_zigbee_start()
 
     configure_poll_control<{
 	.ep = kACCEL_EP, 
-	.callback_on_check_in = update_battery_state_zb, 
+	.callback_on_check_in = on_check_in, 
 	.sleepy_end_device = kPowerSaving
     }>(dev_ctx.poll_ctrl);
 
