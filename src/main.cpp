@@ -248,6 +248,7 @@ struct FloodGate
 	if (--m_ExpectedCount)
 	    return false;
 
+	m_ZbPosted = false;
 	if (m_ReTriggerRequest.exchange(false))
 	    return RequestProcessing();
 	return false;
