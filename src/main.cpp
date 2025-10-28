@@ -45,7 +45,7 @@ constexpr int8_t kRestartCountToFactoryReset = 3;
 constexpr uint32_t kRestartCounterResetTimeoutMS = 15000;//after 15s the restart counter is reset back to 3
 constexpr uint32_t kKeepAliveTimeout = 1000*60*30;//30min
 
-constexpr auto kInitialCheckInInterval = 2_min_to_qs;
+constexpr auto kInitialCheckInInterval = 30_min_to_qs;
 constexpr auto kInitialLongPollInterval = 60_min_to_qs;//this has to be big in order for the device not to perform permanent parent requests
 
 /**********************************************************************/
