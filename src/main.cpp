@@ -40,7 +40,7 @@ using namespace zb::literals;
 /* Configuration constants                                            */
 /**********************************************************************/
 constexpr bool kPowerSaving = true;//if this is change the MCU must be erased since that option persists otherwise
-constexpr uint32_t kFactoryResetWaitMS = 5000;//5s if the dev doesn't join before that
+constexpr uint32_t kFactoryResetWaitMS = 15000;//15s if the dev doesn't join before that
 constexpr int8_t kRestartCountToFactoryReset = 3;
 constexpr uint32_t kRestartCounterResetTimeoutMS = 15000;//after 15s the restart counter is reset back to 3
 constexpr uint32_t kKeepAliveTimeout = 1000*60*30;//30min
@@ -676,16 +676,16 @@ void factory_reset_settings()
     dev_ctx.status_attr = {};
     dev_ctx.settings = {};
     settings_save_subtree(SETTINGS_ZB_ACCEL_SUBTREE);
-    zigbee_pibcache_pan_id_clear();
 }
 
 void do_factory_reset(void*)
 {
+    printk("do_factory_reset\r\n");
     factory_reset_start = false;
     g_FactoryResetOnNoJoin.Cancel();
     //factroy reset request is active
-    zb_bdb_reset_via_local_action(0);
     factory_reset_settings();
+    ZB_SCHEDULE_APP_CALLBACK(zb_bdb_reset_via_local_action, 0);
 }
 
 zb::ZbAlarm g_EnterLowPowerLongPollMode;
@@ -702,6 +702,8 @@ void on_zigbee_start()
     g_ZigbeeReady = true;
     if (factory_reset_start)
     {
+	g_ZigbeeReady = false;
+	printk("factory reset requested:\r\n");
 	do_factory_reset(nullptr);
 	return;
     }
@@ -728,13 +730,18 @@ void zboss_signal_handler(zb_bufid_t bufid)
         auto signalId = zb_get_app_signal(bufid, &pHdr);
         zb_ret_t status = zb_buf_get_status(bufid);
 	if (factory_reset_start && !g_FactoryResetOnNoJoin.IsRunning())
+	{
+	    printk("zboss_signal_handler:factory_reset_start\r\n");
 	    g_FactoryResetOnNoJoin.Setup(do_factory_reset, nullptr, kFactoryResetWaitMS);
+	}
 
 	auto ret = zb::tpl_signal_handler<zb::sig_handlers_t{
 	.on_leave = +[]{ 
-	    zb_zcl_poll_control_stop(); 
-	    k_sleep(K_MSEC(2100));
-	    sys_reboot(SYS_REBOOT_COLD);
+	    printk("leave signal\r\n");
+		//   if (g_ZigbeeReady)
+		//zb_zcl_poll_control_stop(); 
+		//   printk("reboot cold\r\n");
+		//   sys_reboot(SYS_REBOOT_COLD);
 	},
 	    //.on_error = []{ led::show_pattern(led::kPATTERN_3_BLIPS_NORMED, 1000); },
 	    .on_dev_reboot = on_zigbee_start,
@@ -835,11 +842,17 @@ int main(void)
     --g_RestartsToFactoryResetLeft;
     factory_reset_start = g_RestartsToFactoryResetLeft == 0;
     if (factory_reset_start)
+    {
+	printk("factory_reset_start\r\n");
 	led::show_pattern(led::kPATTERN_2_BLIPS_NORMED, 1000); 
+    }
 
     bool factory_reset_finish = g_RestartsToFactoryResetLeft < 0;
     if (factory_reset_finish)
+    {
 	g_RestartsToFactoryResetLeft = kRestartCountToFactoryReset;
+	printk("factory_reset_finish\r\n");
+    }
     settings_save_subtree(SETTINGS_DEV_SUBTREE);
 
     printk("Main: before zigbee erase persistent storage\r\n");
