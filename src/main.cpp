@@ -45,7 +45,7 @@ constexpr int8_t kRestartCountToFactoryReset = 3;
 constexpr uint32_t kRestartCounterResetTimeoutMS = 15000;//after 15s the restart counter is reset back to 3
 constexpr uint32_t kKeepAliveTimeout = 1000*60*30;//30min
 
-constexpr auto kInitialCheckInInterval = 30_min_to_qs;
+constexpr auto kInitialCheckInInterval = 2_min_to_qs;
 constexpr auto kInitialLongPollInterval = 60_min_to_qs;//this has to be big in order for the device not to perform permanent parent requests
 
 /**********************************************************************/
@@ -288,9 +288,13 @@ struct FloodGate
 //forward declaration to get it into a template arg
 void on_sleep_zb(uint8_t buf);
 void on_wake_up_zb(uint8_t buf);
+void on_tap_zb(uint8_t buf);
+void on_double_tap_zb(uint8_t buf);
 
 static constinit FloodGate<on_sleep_zb> g_SleepGate{};
 static constinit FloodGate<on_wake_up_zb> g_WakeUpGate{};
+static constinit FloodGate<on_tap_zb> g_TapGate{};
+static constinit FloodGate<on_double_tap_zb> g_DoubleTapGate{};
 
 struct accel_val
 {
@@ -385,6 +389,16 @@ static lis2du12_trigger g_WakeUpTrigger{
 static lis2du12_trigger g_SleepTrigger{ 
     .trig={.type = (enum sensor_trigger_type)LIS2DU12_TRIG_SLEEP_CHANGE, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
     .wake_cfg = { .x_enable=0, .y_enable=0, .z_enable = 1, .sleep_on = 1, .sleep_duration = 15, .wake_threshold = 1, .wake_duration = 0}
+};
+
+static lis2du12_trigger g_TapTrigger{ 
+    .trig={.type = (enum sensor_trigger_type)SENSOR_TRIG_TAP, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
+    .tap_cfg = { .ignore = 0, .x_threshold=0, .y_threshold=0, .z_threshold = 0, .shock = 1, .quiet = 15, .priority = LIS2DU12_XYZ, .dbl_tap_latency = 0}
+};
+
+static lis2du12_trigger g_DoubleTapTrigger{ 
+    .trig={.type = (enum sensor_trigger_type)SENSOR_TRIG_DOUBLE_TAP, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
+    .tap_cfg = { .ignore = 1, .x_threshold=0, .y_threshold=0, .z_threshold = 0, .shock = 1, .quiet = 15, .priority = LIS2DU12_XYZ, .dbl_tap_latency = 1}
 };
 
 void on_sleep_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
@@ -692,7 +706,7 @@ zb::ZbAlarm g_EnterLowPowerLongPollMode;
 
 void on_check_in(uint8_t param)
 {
-    printk("on_check_in\r\n");
+    printk("on_check_in: %d\r\n", param);
     update_battery_state_zb(param);
 }
 

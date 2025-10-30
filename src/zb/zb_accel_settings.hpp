@@ -30,6 +30,8 @@ namespace zb
                 uint32_t track_wake_up : 1 = 0;
                 uint32_t track_sleep   : 1 = 0;
                 uint32_t track_flip    : 1 = 1;
+                uint32_t track_tap     : 1 = 0;
+                uint32_t track_dbl_tap : 1 = 0;
             }flags{};
             uint32_t flags_dw;
         };
@@ -37,6 +39,13 @@ namespace zb
         uint8_t sleep_duration = 0;
         inactive_odr_t sleep_odr = inactive_odr_t::Same;
         uint8_t  active_odr = 0;/*lis2du12_odr_t*/ //0 - whatever is provided by dts
+	    uint8_t tap_x_threshold = 0;//0 - disabled
+	    uint8_t tap_y_threshold = 0;//0 - disabled
+	    uint8_t tap_z_threshold = 0;//0 - disabled
+	    uint8_t tap_shock = 0;
+	    uint8_t tap_quiet = 0;
+	    uint8_t tap_priority = 0;
+	    uint8_t dbl_tap_latency = 0;
     };
 
     template<>
