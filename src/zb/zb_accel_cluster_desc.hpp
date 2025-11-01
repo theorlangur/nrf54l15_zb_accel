@@ -6,25 +6,11 @@
 namespace zb
 {
     static constexpr uint16_t kZB_ZCL_CLUSTER_ID_ACCEL = 0xfc00;
-    static constexpr uint8_t kZB_ZCL_ACCEL_CMD_WAKE_UP_EVENT = 100;
-    static constexpr uint8_t kZB_ZCL_ACCEL_CMD_SLEEP_EVENT = 101;
-    static constexpr uint8_t kZB_ZCL_ACCEL_CMD_FLIP_EVENT = 102;
-    struct EventArgs
-    {
-        uint32_t tap : 1;
-        uint32_t dbl_tap : 1;
-        uint32_t sixD_x_hi : 1;
-        uint32_t sixD_x_lo : 1;
-        uint32_t sixD_y_hi : 1;
-        uint32_t sixD_y_lo : 1;
-        uint32_t sixD_z_hi : 1;
-        uint32_t sixD_z_lo : 1;
-        uint32_t wake : 1;
-        uint32_t sleep : 1;
-        uint32_t flip_x : 1;
-        uint32_t flip_y : 1;
-        uint32_t flip_z : 1;
-    };
+    static constexpr uint8_t kZB_ZCL_ACCEL_CMD_WAKE_UP_EVENT    = 100;
+    static constexpr uint8_t kZB_ZCL_ACCEL_CMD_SLEEP_EVENT      = 101;
+    static constexpr uint8_t kZB_ZCL_ACCEL_CMD_FLIP_EVENT       = 102;
+    static constexpr uint8_t kZB_ZCL_ACCEL_CMD_TAP_EVENT        = 103;
+    static constexpr uint8_t kZB_ZCL_ACCEL_CMD_DOUBLE_TAP_EVENT = 104;
 
     struct MeasuredAccelValues
     {
@@ -57,26 +43,30 @@ namespace zb
         float x = {};//1.f == 1G
         float y = {};//1.f == 1G
         float z = {};//1.f == 1G
-        [[no_unique_address]]cluster_std_cmd_desc_with_pool_size_t<kZB_ZCL_ACCEL_CMD_WAKE_UP_EVENT, cfg.on_event_pool_size, MeasuredAccelValues> on_wake_up;
-        [[no_unique_address]]cluster_std_cmd_desc_with_pool_size_t<kZB_ZCL_ACCEL_CMD_SLEEP_EVENT, cfg.on_event_pool_size, MeasuredAccelValues> on_sleep;
-        [[no_unique_address]]cluster_std_cmd_desc_with_pool_size_t<kZB_ZCL_ACCEL_CMD_FLIP_EVENT, cfg.on_event_pool_size, flip_event_arg_t> on_flip;
+        [[no_unique_address]]cmd_pool_t<kZB_ZCL_ACCEL_CMD_WAKE_UP_EVENT   , cfg.on_event_pool_size, MeasuredAccelValues> on_wake_up;
+        [[no_unique_address]]cmd_pool_t<kZB_ZCL_ACCEL_CMD_SLEEP_EVENT     , cfg.on_event_pool_size, MeasuredAccelValues> on_sleep;
+        [[no_unique_address]]cmd_pool_t<kZB_ZCL_ACCEL_CMD_FLIP_EVENT      , cfg.on_event_pool_size, flip_event_arg_t   > on_flip;
+        [[no_unique_address]]cmd_pool_t<kZB_ZCL_ACCEL_CMD_TAP_EVENT       , cfg.on_event_pool_size                     > on_tap;
+        [[no_unique_address]]cmd_pool_t<kZB_ZCL_ACCEL_CMD_DOUBLE_TAP_EVENT, cfg.on_event_pool_size                     > on_double_tap;
     };
 
     template<accel_config_t cfg> struct zcl_description_t<zb_zcl_accel_basic_t<cfg>> {
         static constexpr auto get()
         {
             using T = zb_zcl_accel_basic_t<cfg>;
-            return cluster_struct_desc_t<
+            return cluster_t<
                 cluster_info_t{.id = kZB_ZCL_CLUSTER_ID_ACCEL},
-                cluster_attributes_desc_t<
-                    cluster_mem_desc_t{.m = &T::x,.id = 0x0000, .a=Access::RP},
-                    cluster_mem_desc_t{.m = &T::y,.id = 0x0001, .a=Access::RP},
-                    cluster_mem_desc_t{.m = &T::z,.id = 0x0002, .a=Access::RP}
+                attributes_t<
+                    attribute_t{.m = &T::x,.id = 0x0000, .a=Access::RP},
+                    attribute_t{.m = &T::y,.id = 0x0001, .a=Access::RP},
+                    attribute_t{.m = &T::z,.id = 0x0002, .a=Access::RP}
                 >{}
-                ,cluster_commands_desc_t<
+                ,commands_t<
                      &T::on_wake_up
                      ,&T::on_sleep
                      ,&T::on_flip
+                     ,&T::on_tap
+                     ,&T::on_double_tap
                 >{}
             >{};
         }
