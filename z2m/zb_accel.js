@@ -18,6 +18,49 @@ const ea = exposes.access;
 const NS = 'zhc:orlangur';
 
 const orlangurAccelExtended = {
+    pollCtrl: () => {
+        const exposes = [
+            e.numeric('checkin_interval', ea.STATE_GET | ea.STATE_SET)
+                .withLabel('Check-In Interval')
+                .withUnit('s')
+                .withValueMin(30)//30 seconds
+                .withValueMax(60 * 60 * 2)//2 hours
+                .withCategory('config')
+        ];
+        const fromZigbee = [
+            {
+                cluster: 'genPollCtrl',
+                type: ['attributeReport', 'readResponse'],
+                convert: (model, msg, publish, options, meta) => {
+                    const result = {};
+                    const data = msg.data;
+                    if (data['checkinInterval'] !== undefined) 
+                        result['checkin_interval'] = data['checkinInterval'] / 4;//it's specified in quarter-seconds
+                    return result
+                }
+            }
+        ];
+
+        const toZigbee = [
+            {
+                key: ['checkin_interval'],
+                convertGet: async (entity, key, meta) => {
+                    await entity.read('genPollCtrl', ['checkinInterval']);
+                },
+                convertSet: async (entity, key, value, meta) => {
+                    await entity.write('genPollCtrl', {checkinInterval: Math.trunc(value * 4)});
+                    return {state: {[key]: value}};
+                },
+            }
+        ];
+
+        return {
+            exposes,
+            fromZigbee,
+            toZigbee,
+            isModernExtend: true,
+        };
+    },
     extendedStatus: () => {
         const exposes = [
             e.numeric('status1', ea.STATE_GET).withLabel('Status1').withCategory('diagnostic'),
@@ -501,6 +544,7 @@ const definition = {
         orlangurAccelExtended.acceleration(),
         orlangurAccelExtended.accelConfig(),
         orlangurAccelExtended.extendedStatus(),
+        orlangurAccelExtended.pollCtrl(),
         battery({
             voltage: true, 
             voltageReporting: true
