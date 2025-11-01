@@ -98,6 +98,8 @@ const orlangurAccelExtended = {
             e.binary('track_wake_up', ea.ALL, 1, 0).withCategory('config').withDescription('Track wake-up events'),
             e.binary('track_sleep', ea.ALL, 1, 0).withCategory('config').withDescription('Track sleep events'),
             e.binary('track_flip', ea.ALL, 1, 0).withCategory('config').withDescription('Track flip events'),
+            e.binary('track_tap', ea.ALL, 1, 0).withCategory('config').withDescription('Track tap events'),
+            e.binary('track_dbl_tap', ea.ALL, 1, 0).withCategory('config').withDescription('Track double tap events'),
             e.numeric('wake_sleep_threshold', ea.ALL)
                 .withCategory('config')
                 // .withValueMin(0)
@@ -155,6 +157,8 @@ const orlangurAccelExtended = {
             track_wake_up  : 3,
             track_sleep    : 4,
             track_flip     : 5,
+            track_tap      : 6,
+            track_dbl_tap  : 7,
         };
 
         const fromZigbee = [
@@ -177,6 +181,8 @@ const orlangurAccelExtended = {
                         set_cfg('track_wake_up', b0);
                         set_cfg('track_sleep', b0);
                         set_cfg('track_flip', b0);
+                        set_cfg('track_tap', b0);
+                        set_cfg('track_dbl_tap', b0);
                     }
 
                     if (data['wake_sleep_threshold'] !== undefined) result['wake_sleep_threshold'] = data['wake_sleep_threshold'];
@@ -220,7 +226,7 @@ const orlangurAccelExtended = {
 
         const toZigbee = [
             {
-                key: ['enable_x', 'enable_y', 'enable_z', 'track_wake_up', 'track_sleep', 'track_flip'],
+                key: ['enable_x', 'enable_y', 'enable_z', 'track_wake_up', 'track_sleep', 'track_flip', 'track_tap', 'track_dbl_tap'],
                 convertSet: async (entity, key, value, meta) => {
                     //read current state
                     const readResult = await entity.read('customConfig', ['flags']);
