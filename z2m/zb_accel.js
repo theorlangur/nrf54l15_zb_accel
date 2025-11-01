@@ -48,8 +48,9 @@ const orlangurAccelExtended = {
                     await entity.read('genPollCtrl', ['checkinInterval']);
                 },
                 convertSet: async (entity, key, value, meta) => {
-                    await entity.write('genPollCtrl', {checkinInterval: Math.trunc(value * 4)});
-                    return {state: {[key]: value}};
+                    const val = Math.trunc(value * 4)
+                    await entity.write('genPollCtrl', {checkinInterval: val});
+                    return {state: {[key]: value, 'checkinInterval' : val}};
                 },
             }
         ];
