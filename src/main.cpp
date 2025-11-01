@@ -924,8 +924,8 @@ void zboss_signal_handler(zb_bufid_t bufid)
 	    printk("leave signal\r\n");
 		//   if (g_ZigbeeReady)
 		//zb_zcl_poll_control_stop(); 
-		//   printk("reboot cold\r\n");
-		//   sys_reboot(SYS_REBOOT_COLD);
+	    //printk("reboot cold\r\n");
+	    sys_reboot(SYS_REBOOT_COLD);
 	},
 	    //.on_error = []{ led::show_pattern(led::kPATTERN_3_BLIPS_NORMED, 1000); },
 	    .on_dev_reboot = on_zigbee_start,
