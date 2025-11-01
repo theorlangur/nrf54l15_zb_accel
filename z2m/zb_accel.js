@@ -324,7 +324,7 @@ const orlangurAccelExtended = {
                 .withCategory('diagnostic')
                 .withDescription('Last Flip Z event orientation')
                 .withLabel('Last Flip Z Orientation'),
-            presets.action(actions),
+            e.action(actions),
         ];
 
         const fromZigbee = [
