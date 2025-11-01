@@ -876,7 +876,7 @@ zb::ZbAlarm g_EnterLowPowerLongPollMode;
 
 void on_check_in(uint8_t param)
 {
-    printk("on_check_in: %d\r\n", param);
+    printk("on_check_in: %d; current check-in interval: %dqs (%.2fs)\r\n", param, dev_ctx.poll_ctrl.check_in_interval, float(dev_ctx.poll_ctrl.check_in_interval) / float(4));
     update_battery_state_zb(param);
 }
 
