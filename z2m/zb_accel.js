@@ -82,6 +82,15 @@ const orlangurAccelExtended = {
             "800 Hz"      : 11,
         };
 
+        const tap_priority = {
+            "XYZ"  : 0,
+            "YXZ"  : 1,
+            "XZY"  : 2,
+            "ZYX"  : 3,
+            "YZX"  : 5,
+            "ZXY"  : 6,
+        };
+
         const exposes = [
             e.binary('enable_x', ea.ALL, 1, 0).withCategory('config').withDescription('Sensing activity on X'),
             e.binary('enable_y', ea.ALL, 1, 0).withCategory('config').withDescription('Sensing activity on Y'),
@@ -109,6 +118,34 @@ const orlangurAccelExtended = {
                 .withCategory('config')
                 .withDescription('Active ODR')
                 .withLabel('Active ODR'),
+            e.enum('tap_priority', ea.ALL, Object.keys(tap_priority))
+                .withCategory('config')
+                .withDescription('Tap Priority')
+                .withLabel('Tap Priority'),
+            e.numeric('tap_x_threshold', ea.ALL)
+                .withCategory('config')
+                .withDescription('Tap X Threshold')
+                .withLabel('Tap X Threshold'),
+            e.numeric('tap_y_threshold', ea.ALL)
+                .withCategory('config')
+                .withDescription('Tap Y Threshold')
+                .withLabel('Tap Y Threshold'),
+            e.numeric('tap_z_threshold', ea.ALL)
+                .withCategory('config')
+                .withDescription('Tap Z Threshold')
+                .withLabel('Tap Z Threshold'),
+            e.numeric('tap_shock', ea.ALL)
+                .withCategory('config')
+                .withDescription('Tap Shock')
+                .withLabel('Tap Shock'),
+            e.numeric('tap_quiet', ea.ALL)
+                .withCategory('config')
+                .withDescription('Tap Quiet')
+                .withLabel('Tap Quiet'),
+            e.numeric('double_tap_latency', ea.ALL)
+                .withCategory('config')
+                .withDescription('Double Tap Latency')
+                .withLabel('Double Tap Latency'),
         ];
 
         const cfg_bits = {
@@ -142,10 +179,15 @@ const orlangurAccelExtended = {
                         set_cfg('track_flip', b0);
                     }
 
-                    if (data['wake_sleep_threshold'] !== undefined)
-                        result['wake_sleep_threshold'] = data['wake_sleep_threshold'];
-                    if (data['sleep_duration'] !== undefined)
-                        result['sleep_duration'] = data['sleep_duration'];
+                    if (data['wake_sleep_threshold'] !== undefined) result['wake_sleep_threshold'] = data['wake_sleep_threshold'];
+                    if (data['sleep_duration'] !== undefined) result['sleep_duration'] = data['sleep_duration'];
+                    if (data['tap_x_threshold'] !== undefined) result['tap_x_threshold'] = data['tap_x_threshold'];
+                    if (data['tap_y_threshold'] !== undefined) result['tap_y_threshold'] = data['tap_y_threshold'];
+                    if (data['tap_z_threshold'] !== undefined) result['tap_z_threshold'] = data['tap_z_threshold'];
+                    if (data['tap_shock'] !== undefined) result['tap_shock'] = data['tap_shock'];
+                    if (data['tap_quiet'] !== undefined) result['tap_quiet'] = data['tap_quiet'];
+                    if (data['double_tap_latency'] !== undefined) result['double_tap_latency'] = data['double_tap_latency'];
+
                     if (data['sleep_odr'] !== undefined)
                     {
                         const v = data['sleep_odr']
@@ -159,6 +201,13 @@ const orlangurAccelExtended = {
                         const entry = Object.entries(active_odr).find(([_,val])=> val == v)
                         if (entry)
                             result['active_odr'] = entry[0];//key
+                    }
+                    if (data['tap_priority'] !== undefined)
+                    {
+                        const v = data['tap_priority']
+                        const entry = Object.entries(tap_priority).find(([_,val])=> val == v)
+                        if (entry)
+                            result['tap_priority'] = entry[0];//key
                     }
 
                     if (Object.keys(result).length == 0) 
@@ -185,7 +234,15 @@ const orlangurAccelExtended = {
                 },
             },
             {
-                key: ['wake_sleep_threshold', 'sleep_duration'],
+                key: ['wake_sleep_threshold'
+                    , 'sleep_duration'
+                    , 'tap_x_threshold'
+                    , 'tap_y_threshold'
+                    , 'tap_z_threshold'
+                    , 'tap_shock'
+                    , 'tap_quiet'
+                    , 'double_tap_latency'
+                ],
                 convertSet: async (entity, key, value, meta) => {
                     await entity.write('customConfig', {[key]: value});
                     return {state: {[key]: value}};
@@ -208,6 +265,16 @@ const orlangurAccelExtended = {
                 key: ['active_odr'],
                 convertSet: async (entity, key, value, meta) => {
                     await entity.write('customConfig', {[key]: active_odr[value]});
+                    return {state: {[key]: value}};
+                },
+                convertGet: async (entity, key, meta) => {
+                    await entity.read('customConfig', [key]);
+                },
+            }
+            ,{
+                key: ['tap_priority'],
+                convertSet: async (entity, key, value, meta) => {
+                    await entity.write('customConfig', {[key]: tap_priority[value]});
                     return {state: {[key]: value}};
                 },
                 convertGet: async (entity, key, meta) => {
@@ -371,17 +438,32 @@ const definition = {
                     ID: 102,
                     parameters: [{name: 'flags', type: Zcl.DataType.UINT8}]
                 },
+                on_tap: {
+                    ID: 103,
+                    parameters: []
+                },
+                on_double_tap: {
+                    ID: 104,
+                    parameters: []
+                },
             },
             commandsResponse: {}
         }),
         deviceAddCustomCluster('customConfig', {
             ID: 0xfc01,
             attributes: {
-                flags: {ID: 0x0000, type: Zcl.DataType.BITMAP32},
+                flags:                {ID: 0x0000, type: Zcl.DataType.BITMAP32},
                 wake_sleep_threshold: {ID: 0x0001, type: Zcl.DataType.UINT8},
-                sleep_duration: {ID: 0x0002, type: Zcl.DataType.UINT8},
-                sleep_odr: {ID: 0x0003, type: Zcl.DataType.ENUM8},
-                active_odr: {ID: 0x0004, type: Zcl.DataType.ENUM8},
+                sleep_duration:       {ID: 0x0002, type: Zcl.DataType.UINT8},
+                sleep_odr:            {ID: 0x0003, type: Zcl.DataType.ENUM8},
+                active_odr:           {ID: 0x0004, type: Zcl.DataType.ENUM8},
+                tap_x_threshold:      {ID: 0x0005, type: Zcl.DataType.UINT8},
+                tap_y_threshold:      {ID: 0x0006, type: Zcl.DataType.UINT8},
+                tap_z_threshold:      {ID: 0x0007, type: Zcl.DataType.UINT8},
+                tap_shock:            {ID: 0x0008, type: Zcl.DataType.UINT8},
+                tap_quiet:            {ID: 0x0009, type: Zcl.DataType.UINT8},
+                tap_priority:         {ID: 0x000a, type: Zcl.DataType.ENUM8},
+                double_tap_latency:   {ID: 0x000b, type: Zcl.DataType.UINT8},
             },
             commands: {},
             commandsResponse: {}
@@ -409,7 +491,20 @@ const definition = {
         await reporting.bind(endpoint, coordinatorEndpoint, ['customAccel']);
         await reporting.bind(endpoint, coordinatorEndpoint, ['customStatus']);
         await endpoint.read('customAccel', ['X','Y','Z']);
-        await endpoint.read('customConfig', [ 'flags', 'wake_sleep_threshold', 'sleep_duration', 'sleep_odr' ]);
+        await endpoint.read('customConfig', [ 
+            'flags'
+            , 'wake_sleep_threshold'
+            , 'sleep_duration'
+            , 'sleep_odr'
+            , 'active_odr' 
+            , 'tap_priority' 
+            , 'tap_x_threshold' 
+            , 'tap_y_threshold' 
+            , 'tap_z_threshold' 
+            , 'tap_shock' 
+            , 'tap_quiet' 
+            , 'double_tap_latency' 
+        ]);
         await endpoint.read('customStatus', [ 'status1', 'status2', 'status3']);
         await endpoint.configureReporting('customAccel', [
             {
