@@ -40,6 +40,7 @@ using namespace zb::literals;
 /* Configuration constants                                            */
 /**********************************************************************/
 constexpr bool kPowerSaving = true;//if this is change the MCU must be erased since that option persists otherwise
+constexpr bool kCmdDebug = false;
 constexpr uint32_t kFactoryResetWaitMS = 15000;//15s if the dev doesn't join before that
 constexpr int8_t kRestartCountToFactoryReset = 3;
 constexpr uint32_t kRestartCounterResetTimeoutMS = 15000;//after 15s the restart counter is reset back to 3
@@ -458,8 +459,11 @@ void on_sleep_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status
     if (newStatus3 != dev_ctx.status_attr.status3)
 	zb_ep.attr<kAttrStatus3>() = newStatus3;
 
-    printk("cmd internals stats after sleep sent\r\n");
-    zb_ep.dump_info<kCmdOnFlipEvent, kCmdOnSleepEvent, kCmdOnWakeUpEvent>();
+    if constexpr (kCmdDebug)
+    {
+	printk("cmd internals stats after sleep sent\r\n");
+	zb_ep.dump_info<kCmdOnFlipEvent, kCmdOnSleepEvent, kCmdOnWakeUpEvent>();
+    }
 }
 
 void on_flip_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
@@ -478,8 +482,11 @@ void on_flip_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
     if (newStatus3 != dev_ctx.status_attr.status3)
 	zb_ep.attr<kAttrStatus3>() = newStatus3;
 
-    printk("cmd internals stats after flip sent\r\n");
-    zb_ep.dump_info<kCmdOnFlipEvent, kCmdOnSleepEvent, kCmdOnWakeUpEvent>();
+    if constexpr (kCmdDebug)
+    {
+	printk("cmd internals stats after flip sent\r\n");
+	zb_ep.dump_info<kCmdOnFlipEvent, kCmdOnSleepEvent, kCmdOnWakeUpEvent>();
+    }
 }
 
 void on_wake_up_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
@@ -525,8 +532,11 @@ void on_sleep_zb(uint8_t buf)
     zb_ep.attr<kAttrY>() = y;
     zb_ep.attr<kAttrZ>() = z;
 
-    printk("cmd internals stats on_sleep_zb begin\r\n");
-    zb_ep.dump_info<kCmdOnFlipEvent, kCmdOnSleepEvent, kCmdOnWakeUpEvent>();
+    if constexpr (kCmdDebug)
+    {
+	printk("cmd internals stats on_sleep_zb begin\r\n");
+	zb_ep.dump_info<kCmdOnFlipEvent, kCmdOnSleepEvent, kCmdOnWakeUpEvent>();
+    }
 
     int16_t newStatus3 = dev_ctx.status_attr.status3;
     if (dev_ctx.settings.flags.track_sleep)
@@ -561,8 +571,11 @@ void on_sleep_zb(uint8_t buf)
     if (newStatus3 != dev_ctx.status_attr.status3)
 	zb_ep.attr<kAttrStatus3>() = newStatus3;
 
-    printk("cmd internals stats on_sleep_zb end\r\n");
-    zb_ep.dump_info<kCmdOnFlipEvent, kCmdOnSleepEvent, kCmdOnWakeUpEvent>();
+    if constexpr (kCmdDebug)
+    {
+	printk("cmd internals stats on_sleep_zb end\r\n");
+	zb_ep.dump_info<kCmdOnFlipEvent, kCmdOnSleepEvent, kCmdOnWakeUpEvent>();
+    }
 }
 
 void on_sleep(const struct device *dev, const struct sensor_trigger *trigger)
