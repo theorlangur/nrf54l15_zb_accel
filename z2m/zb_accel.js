@@ -292,6 +292,7 @@ const orlangurAccelExtended = {
     },
     acceleration: () => {
         const flip_enums = ['pos', 'neg'];
+        const actions = ["wake_up", "sleep", "flip", "tap", "double_tap"];
         const exposes = [
             e.numeric('X', ea.STATE_GET)
                             .withUnit('g')
@@ -323,6 +324,7 @@ const orlangurAccelExtended = {
                 .withCategory('diagnostic')
                 .withDescription('Last Flip Z event orientation')
                 .withLabel('Last Flip Z Orientation'),
+            presets.action(actions),
         ];
 
         const fromZigbee = [
@@ -351,7 +353,8 @@ const orlangurAccelExtended = {
                     var x = msg.data.x;
                     var y = msg.data.y;
                     var z = msg.data.z;
-                    return {WakeUp: `${new Date().toLocaleString()}: x:${x}; y:${y}; z:${z};`};
+                    const act = msg.type.replace("commandOn_", "")
+                    return {WakeUp: `${new Date().toLocaleString()}: x:${x}; y:${y}; z:${z};`, action: act};
                 }
             },
             {
@@ -361,7 +364,8 @@ const orlangurAccelExtended = {
                     var x = msg.data.x;
                     var y = msg.data.y;
                     var z = msg.data.z;
-                    return {Sleep: `${new Date().toLocaleString()}: x:${x}; y:${y}; z:${z};`};
+                    const act = msg.type.replace("commandOn_", "")
+                    return {Sleep: `${new Date().toLocaleString()}: x:${x}; y:${y}; z:${z};`, action: act};
                 }
             },
             {
@@ -376,11 +380,21 @@ const orlangurAccelExtended = {
                     var x_neg = ((f >> 3) & 1);
                     var y_neg = ((f >> 4) & 1);
                     var z_neg = ((f >> 5) & 1);
+                    const act = msg.type.replace("commandOn_", "")
                     return {Flip: `${new Date().toLocaleString()}: x:${x}; y:${y}; z:${z};`
                         , flip_x: flip_enums[x_neg]
                         , flip_y: flip_enums[y_neg]
                         , flip_z: flip_enums[z_neg]
+                        , action: act
                     };
+                }
+            },
+            {
+                cluster: 'customAccel',
+                type: ['commandOn_tap', 'commandOn_double_tap'],
+                convert: (model, msg, publish, options, meta) => {
+                    const act = msg.type.replace("commandOn_", "")
+                    return { action: act };
                 }
             }
         ];
