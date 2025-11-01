@@ -91,6 +91,8 @@ constexpr auto kAttrZ = &device_ctx_t::accel_type::z;
 constexpr auto kCmdOnWakeUpEvent = &device_ctx_t::accel_type::on_wake_up;
 constexpr auto kCmdOnSleepEvent = &device_ctx_t::accel_type::on_sleep;
 constexpr auto kCmdOnFlipEvent = &device_ctx_t::accel_type::on_flip;
+constexpr auto kCmdOnTapEvent = &device_ctx_t::accel_type::on_tap;
+constexpr auto kCmdOnDoubleTapEvent = &device_ctx_t::accel_type::on_double_tap;
 constexpr auto kAttrStatus1 = &zb::zb_zcl_status_t::status1;
 constexpr auto kAttrStatus2 = &zb::zb_zcl_status_t::status2;
 constexpr auto kAttrStatus3 = &zb::zb_zcl_status_t::status3;
@@ -103,6 +105,29 @@ constexpr int kWakeUpSendStatusBit1 = 10;
 constexpr int kWakeUpSendStatusCodeOffset = 11;
 
 constexpr int kStatusCodeSize = 4;
+
+struct Status2Bits
+{
+    uint16_t int_sleep_err      : 1 = 0;
+    uint16_t int_wake_up_err    : 1 = 0;
+    uint16_t int_tap_err        : 1 = 0;
+    uint16_t int_double_tap_err : 1 = 0;
+    uint16_t cmd_tap_err        : 1 = 0;
+    uint16_t cmd_double_tap_err : 1 = 0;
+
+    Status2Bits(uint16_t v)
+    {
+	*reinterpret_cast<uint16_t*>(this) = v;
+    }
+
+    Status2Bits& operator=(uint16_t v)
+    {
+	*reinterpret_cast<uint16_t*>(this) = v;
+	return *this;
+    }
+
+    operator uint16_t () const { return *reinterpret_cast<const uint16_t*>(this); }
+};
 
 /* Zigbee device application context storage. */
 static constinit device_ctx_t dev_ctx{
@@ -168,6 +193,14 @@ struct ZbSettingsEntries
     inline static constexpr const char sleep_duration[] = SETTINGS_ZB_ACCEL_SUBTREE "/sleep_duration";
     inline static constexpr const char sleep_tracking_rate[] = SETTINGS_ZB_ACCEL_SUBTREE "/sleep_tracking_rate";
     inline static constexpr const char active_tracking_rate[] = SETTINGS_ZB_ACCEL_SUBTREE "/active_tracking_rate";
+
+    inline static constexpr const char tap_threshold_x[]       = SETTINGS_ZB_ACCEL_SUBTREE "/tap_threshold_x";
+    inline static constexpr const char tap_threshold_y[]       = SETTINGS_ZB_ACCEL_SUBTREE "/tap_threshold_y";
+    inline static constexpr const char tap_threshold_z[]       = SETTINGS_ZB_ACCEL_SUBTREE "/tap_threshold_z";
+    inline static constexpr const char tap_shock[]             = SETTINGS_ZB_ACCEL_SUBTREE "/tap_shock";
+    inline static constexpr const char tap_quiet[]             = SETTINGS_ZB_ACCEL_SUBTREE "/tap_quiet";
+    inline static constexpr const char tap_priority[]          = SETTINGS_ZB_ACCEL_SUBTREE "/tap_priority";
+    inline static constexpr const char double_tap_latency[]    = SETTINGS_ZB_ACCEL_SUBTREE "/double_tap_latency";
 };
 
 using settings_mgr = zb::persistent_settings_manager<
@@ -177,6 +210,14 @@ using settings_mgr = zb::persistent_settings_manager<
     ,zb::settings_entry{ZbSettingsEntries::sleep_duration, dev_ctx.settings.sleep_duration}
     ,zb::settings_entry{ZbSettingsEntries::sleep_tracking_rate, dev_ctx.settings.sleep_odr}
     ,zb::settings_entry{ZbSettingsEntries::active_tracking_rate, dev_ctx.settings.active_odr}
+
+    ,zb::settings_entry{ZbSettingsEntries::tap_threshold_x, dev_ctx.settings.tap_x_threshold}
+    ,zb::settings_entry{ZbSettingsEntries::tap_threshold_y, dev_ctx.settings.tap_y_threshold}
+    ,zb::settings_entry{ZbSettingsEntries::tap_threshold_z, dev_ctx.settings.tap_z_threshold}
+    ,zb::settings_entry{ZbSettingsEntries::tap_shock, dev_ctx.settings.tap_shock}
+    ,zb::settings_entry{ZbSettingsEntries::tap_quiet, dev_ctx.settings.tap_quiet}
+    ,zb::settings_entry{ZbSettingsEntries::tap_priority, dev_ctx.settings.tap_priority}
+    ,zb::settings_entry{ZbSettingsEntries::double_tap_latency, dev_ctx.settings.dbl_tap_latency}
 >;
 
 //helping constexpr template functions to wrap the change reaction logic into settings-storing logic
@@ -513,10 +554,7 @@ void on_sleep_zb(uint8_t buf)
 		newStatus3 = (newStatus3 & ~kMask) | (failed_to_send * kMask);
 	    }
 	    if (!failed_to_send)
-	    {
 		processingDone.WaitForOneMore();
-		zb_ep.attr<kAttrStatus2>() = *id;
-	    }
 	}
     }
 
@@ -563,7 +601,6 @@ void on_wake_up_zb(uint8_t buf)
     zb_ep.attr<kAttrZ>() = z;
 
     int16_t newStatus3 = dev_ctx.status_attr.status3;
-
     {
 	auto id = zb_ep.send_cmd<kCmdOnWakeUpEvent, {.cb=on_wake_up_cmd_sent, .timeout_ms = 5000}>(vals);
 	bool failed_to_send = !id;
@@ -574,10 +611,7 @@ void on_wake_up_zb(uint8_t buf)
 	}
 
 	if (!failed_to_send)//we've sent cmd. finishing in the cmd handler
-	{
 	    processingDone.WaitForOneMore();
-	    zb_ep.attr<kAttrStatus2>() = *id;
-	}
     }
 
     if (newStatus3 != dev_ctx.status_attr.status3)
@@ -593,10 +627,96 @@ void on_wake_up(const struct device *dev, const struct sensor_trigger *trigger)
 	printk("wake up detected -> postponed\r\n");
 }
 
+void on_tap_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
+{
+    auto processingDone = g_TapGate.GetFinishingBlock();
+    int16_t code = status_to_error_code(status);
+    printk("zb: on_tap_cmd_sent id:%d; status: %d\r\n", cmd_id, -code);
+    Status2Bits s(dev_ctx.status_attr.status2);
+    s.cmd_tap_err = code != 0;
+    if (dev_ctx.status_attr.status2 != s)
+	zb_ep.attr<kAttrStatus2>() = s;
+}
+
+void on_double_tap_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
+{
+    auto processingDone = g_DoubleTapGate.GetFinishingBlock();
+    int16_t code = status_to_error_code(status);
+    printk("zb: on_double_tap_cmd_sent id:%d; status: %d\r\n", cmd_id, -code);
+    Status2Bits s(dev_ctx.status_attr.status2);
+    s.cmd_double_tap_err = code != 0;
+    if (dev_ctx.status_attr.status2 != s)
+	zb_ep.attr<kAttrStatus2>() = s;
+}
+
+void on_tap_zb(uint8_t buf)
+{
+    auto processingDone = g_TapGate.GetFinishingBlock();
+    printk("zb: tap detected\r\n");
+    if (!g_ZigbeeReady)
+    {
+	printk("zb: zigbee stack not ready yet\r\n");
+	return;
+    }
+
+    Status2Bits status(dev_ctx.status_attr.status2);
+    {
+	auto id = zb_ep.send_cmd<kCmdOnTapEvent, {.cb=on_tap_cmd_sent, .timeout_ms = 5000}>();
+	bool failed_to_send = !id;
+	status.cmd_tap_err = failed_to_send;
+	if (!failed_to_send)//we've sent cmd. finishing in the cmd handler
+	    processingDone.WaitForOneMore();
+    }
+
+    if (dev_ctx.status_attr.status2 != status)
+	zb_ep.attr<kAttrStatus2>() = status;
+}
+
+void on_double_tap_zb(uint8_t buf)
+{
+    auto processingDone = g_DoubleTapGate.GetFinishingBlock();
+    printk("zb: double tap detected\r\n");
+    if (!g_ZigbeeReady)
+    {
+	printk("zb: zigbee stack not ready yet\r\n");
+	return;
+    }
+
+    Status2Bits status(dev_ctx.status_attr.status2);
+    {
+	auto id = zb_ep.send_cmd<kCmdOnDoubleTapEvent, {.cb=on_double_tap_cmd_sent, .timeout_ms = 5000}>();
+	bool failed_to_send = !id;
+	status.cmd_double_tap_err = failed_to_send;
+	if (!failed_to_send)//we've sent cmd. finishing in the cmd handler
+	    processingDone.WaitForOneMore();
+    }
+
+    if (dev_ctx.status_attr.status2 != status)
+	zb_ep.attr<kAttrStatus2>() = status;
+}
+
+void on_tap(const struct device *dev, const struct sensor_trigger *trigger)
+{
+    //post on Zigbee thread and run immedieately
+    if (g_TapGate.RequestProcessing())
+	printk("tap detected -> zb\r\n");
+    else
+	printk("tap detected -> postponed\r\n");
+}
+
+void on_double_tap(const struct device *dev, const struct sensor_trigger *trigger)
+{
+    //post on Zigbee thread and run immedieately
+    if (g_DoubleTapGate.RequestProcessing())
+	printk("double tap detected -> zb\r\n");
+    else
+	printk("double tap detected -> postponed\r\n");
+}
+
 void reconfigure_interrupts()
 {
-    //return;
     int ret;
+    Status2Bits status(dev_ctx.status_attr.status2);
     bool xyz_enabled = dev_ctx.settings.flags.enable_x || dev_ctx.settings.flags.enable_y || dev_ctx.settings.flags.enable_z;
     if (xyz_enabled && (dev_ctx.settings.flags.track_sleep || dev_ctx.settings.flags.track_flip))
     {
@@ -608,11 +728,13 @@ void reconfigure_interrupts()
 	g_SleepTrigger.wake_cfg.inactive_odr = (lis2du12_sleep_odr_t)dev_ctx.settings.sleep_odr;
 
 	ret = sensor_trigger_set(accel_dev, &g_SleepTrigger.trig, &on_sleep);
+	status.int_sleep_err = ret != 0;
 	if (ret != 0) printk("Failed to set sleep trigger\r\n");
 	else printk("Enabled sleep interrupts\r\n");
     }else
     {
 	ret = sensor_trigger_set(accel_dev, &g_SleepTrigger.trig, nullptr);
+	status.int_sleep_err = ret != 0;
 	if (ret != 0) printk("Failed to remove sleep trigger");
 	else printk("Disabled wake interrupts\r\n");
     }
@@ -625,14 +747,48 @@ void reconfigure_interrupts()
 	g_WakeUpTrigger.wake_cfg.wake_threshold = dev_ctx.settings.wake_sleep_threshold;
 
 	ret = sensor_trigger_set(accel_dev, &g_WakeUpTrigger.trig, &on_wake_up);
+	status.int_wake_up_err = ret != 0;
 	if (ret != 0) printk("Failed to set wake up trigger\r\n");
 	else printk("Enabled wake up interrupts\r\n");
     }else
     {
 	ret = sensor_trigger_set(accel_dev, &g_WakeUpTrigger.trig, nullptr);
+	status.int_wake_up_err = ret != 0;
 	if (ret != 0) printk("Failed to remove wake up trigger\r\n");
 	else printk("Disabled wake up interrupts\r\n");
     }
+
+    if (dev_ctx.settings.flags.track_tap)
+    {
+	ret = sensor_trigger_set(accel_dev, &g_TapTrigger.trig, &on_tap);
+	status.int_tap_err = ret != 0;
+	if (ret != 0) printk("Failed to set tap trigger\r\n");
+	else printk("Enabled tap interrupts\r\n");
+    }else
+    {
+	ret = sensor_trigger_set(accel_dev, &g_TapTrigger.trig, nullptr);
+	status.int_tap_err = ret != 0;
+	if (ret != 0) printk("Failed to remove tap trigger\r\n");
+	else printk("Disabled tap interrupts\r\n");
+    }
+
+    if (dev_ctx.settings.flags.track_dbl_tap)
+    {
+	g_DoubleTapTrigger.tap_cfg.ignore = dev_ctx.settings.flags.track_tap;
+	ret = sensor_trigger_set(accel_dev, &g_DoubleTapTrigger.trig, &on_double_tap);
+	status.int_double_tap_err = ret != 0;
+	if (ret != 0) printk("Failed to set double-tap trigger\r\n");
+	else printk("Enabled double-tap interrupts\r\n");
+    }else
+    {
+	ret = sensor_trigger_set(accel_dev, &g_DoubleTapTrigger.trig, nullptr);
+	status.int_double_tap_err = ret != 0;
+	if (ret != 0) printk("Failed to remove double-tap trigger\r\n");
+	else printk("Disabled double-tap interrupts\r\n");
+    }
+
+    if (dev_ctx.status_attr.status2 != status)
+	zb_ep.attr<kAttrStatus2>() = status;
 }
 
 void udpate_accel_values(uint8_t)
@@ -667,9 +823,9 @@ void on_active_odr_changed(const uint8_t &v)
     lis2du12_set_odr(accel_dev, (lis2du12_odr_t)v);
 }
 
-void on_wake_sleep_settings_changed()
+void on_interrupt_settings_changed()
 {
-    printk("Settings changed\r\n");
+    printk("Interrupt Settings changed\r\n");
     reconfigure_interrupts();
 }
 
@@ -885,44 +1041,52 @@ int main(void)
 	zb::dev_cb_handlers_desc{ .error_handler = on_dev_cb_error }
 	//handler
     , zb::set_attr_val_gen_desc_t{
-	{
-	    .ep = kACCEL_EP,
-	    .cluster = zb::kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS,
-	    .attribute = zb::kZB_ATTR_ID_MAIN_SETTINGS
-	},
+	zb_ep.attribute_desc<&zb::zb_zcl_accel_settings_t::flags_dw>(),
 	to_settings_handler<on_settings_changed>(ZbSettingsEntries::flags)
       }
     , zb::set_attr_val_gen_desc_t{
-	{
-	    .ep = kACCEL_EP,
-	    .cluster = zb::kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS,
-	    .attribute = zb::kZB_ATTR_ID_WAKE_SLEEP_THRESHOLD
-	},
-	to_settings_handler<on_wake_sleep_settings_changed>(ZbSettingsEntries::wake_sleep_threshold)
+	zb_ep.attribute_desc<&zb::zb_zcl_accel_settings_t::wake_sleep_threshold>(),
+	to_settings_handler<on_interrupt_settings_changed>(ZbSettingsEntries::wake_sleep_threshold)
       }
     , zb::set_attr_val_gen_desc_t{
-	{
-	    .ep = kACCEL_EP,
-	    .cluster = zb::kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS,
-	    .attribute = zb::kZB_ATTR_ID_SLEEP_DURATION
-	},
-	to_settings_handler<on_wake_sleep_settings_changed>(ZbSettingsEntries::sleep_duration)
+	zb_ep.attribute_desc<&zb::zb_zcl_accel_settings_t::sleep_duration>(),
+	to_settings_handler<on_interrupt_settings_changed>(ZbSettingsEntries::sleep_duration)
       }
     , zb::set_attr_val_gen_desc_t{
-	{
-	    .ep = kACCEL_EP,
-	    .cluster = zb::kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS,
-	    .attribute = zb::kZB_ATTR_ID_SLEEP_TRACKING_RATE
-	},
-	to_settings_handler<on_wake_sleep_settings_changed>(ZbSettingsEntries::sleep_tracking_rate)
+	zb_ep.attribute_desc<&zb::zb_zcl_accel_settings_t::sleep_odr>(),
+	to_settings_handler<on_interrupt_settings_changed>(ZbSettingsEntries::sleep_tracking_rate)
       }
     , zb::set_attr_val_gen_desc_t{
-	{
-	    .ep = kACCEL_EP,
-	    .cluster = zb::kZB_ZCL_CLUSTER_ID_ACCEL_SETTINGS,
-	    .attribute = zb::kZB_ATTR_ID_ACTIVE_TRACKING_RATE
-	},
+	zb_ep.attribute_desc<&zb::zb_zcl_accel_settings_t::active_odr>(),
 	to_settings_handler<on_active_odr_changed>(ZbSettingsEntries::active_tracking_rate)
+      }
+    , zb::set_attr_val_gen_desc_t{
+	zb_ep.attribute_desc<&zb::zb_zcl_accel_settings_t::tap_x_threshold>(),
+	to_settings_handler<on_interrupt_settings_changed>(ZbSettingsEntries::tap_threshold_x)
+      }
+    , zb::set_attr_val_gen_desc_t{
+	zb_ep.attribute_desc<&zb::zb_zcl_accel_settings_t::tap_y_threshold>(),
+	to_settings_handler<on_interrupt_settings_changed>(ZbSettingsEntries::tap_threshold_y)
+      }
+    , zb::set_attr_val_gen_desc_t{
+	zb_ep.attribute_desc<&zb::zb_zcl_accel_settings_t::tap_z_threshold>(),
+	to_settings_handler<on_interrupt_settings_changed>(ZbSettingsEntries::tap_threshold_z)
+      }
+    , zb::set_attr_val_gen_desc_t{
+	zb_ep.attribute_desc<&zb::zb_zcl_accel_settings_t::tap_shock>(),
+	to_settings_handler<on_interrupt_settings_changed>(ZbSettingsEntries::tap_shock)
+      }
+    , zb::set_attr_val_gen_desc_t{
+	zb_ep.attribute_desc<&zb::zb_zcl_accel_settings_t::tap_quiet>(),
+	to_settings_handler<on_interrupt_settings_changed>(ZbSettingsEntries::tap_quiet)
+      }
+    , zb::set_attr_val_gen_desc_t{
+	zb_ep.attribute_desc<&zb::zb_zcl_accel_settings_t::tap_priority>(),
+	to_settings_handler<on_interrupt_settings_changed>(ZbSettingsEntries::tap_priority)
+      }
+    , zb::set_attr_val_gen_desc_t{
+	zb_ep.attribute_desc<&zb::zb_zcl_accel_settings_t::dbl_tap_latency>(),
+	to_settings_handler<on_interrupt_settings_changed>(ZbSettingsEntries::double_tap_latency)
       }
     >;
     ZB_ZCL_REGISTER_DEVICE_CB(dev_cb);
