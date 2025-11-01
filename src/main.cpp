@@ -760,6 +760,13 @@ void reconfigure_interrupts()
 
     if (dev_ctx.settings.flags.track_tap)
     {
+	g_TapTrigger.tap_cfg.priority = (lis2du12_priority_t)dev_ctx.settings.tap_priority;
+	g_TapTrigger.tap_cfg.quiet = dev_ctx.settings.tap_quiet;
+	g_TapTrigger.tap_cfg.shock = dev_ctx.settings.tap_shock;
+	g_TapTrigger.tap_cfg.dbl_tap_latency = dev_ctx.settings.dbl_tap_latency;
+	g_TapTrigger.tap_cfg.x_threshold = dev_ctx.settings.tap_x_threshold;
+	g_TapTrigger.tap_cfg.y_threshold = dev_ctx.settings.tap_y_threshold;
+	g_TapTrigger.tap_cfg.z_threshold = dev_ctx.settings.tap_z_threshold;
 	ret = sensor_trigger_set(accel_dev, &g_TapTrigger.trig, &on_tap);
 	status.int_tap_err = ret != 0;
 	if (ret != 0) printk("Failed to set tap trigger\r\n");
@@ -775,6 +782,13 @@ void reconfigure_interrupts()
     if (dev_ctx.settings.flags.track_dbl_tap)
     {
 	g_DoubleTapTrigger.tap_cfg.ignore = dev_ctx.settings.flags.track_tap;
+	g_DoubleTapTrigger.tap_cfg.priority = (lis2du12_priority_t)dev_ctx.settings.tap_priority;
+	g_DoubleTapTrigger.tap_cfg.quiet = dev_ctx.settings.tap_quiet;
+	g_DoubleTapTrigger.tap_cfg.shock = dev_ctx.settings.tap_shock;
+	g_DoubleTapTrigger.tap_cfg.dbl_tap_latency = dev_ctx.settings.dbl_tap_latency;
+	g_DoubleTapTrigger.tap_cfg.x_threshold = dev_ctx.settings.tap_x_threshold;
+	g_DoubleTapTrigger.tap_cfg.y_threshold = dev_ctx.settings.tap_y_threshold;
+	g_DoubleTapTrigger.tap_cfg.z_threshold = dev_ctx.settings.tap_z_threshold;
 	ret = sensor_trigger_set(accel_dev, &g_DoubleTapTrigger.trig, &on_double_tap);
 	status.int_double_tap_err = ret != 0;
 	if (ret != 0) printk("Failed to set double-tap trigger\r\n");
