@@ -94,6 +94,7 @@ constexpr auto kCmdOnSleepEvent = &device_ctx_t::accel_type::on_sleep;
 constexpr auto kCmdOnFlipEvent = &device_ctx_t::accel_type::on_flip;
 constexpr auto kCmdOnTapEvent = &device_ctx_t::accel_type::on_tap;
 constexpr auto kCmdOnDoubleTapEvent = &device_ctx_t::accel_type::on_double_tap;
+constexpr auto kCmdOnFreeFallEvent = &device_ctx_t::accel_type::on_free_fall;
 constexpr auto kAttrStatus1 = &zb::zb_zcl_status_t::status1;
 constexpr auto kAttrStatus2 = &zb::zb_zcl_status_t::status2;
 constexpr auto kAttrStatus3 = &zb::zb_zcl_status_t::status3;
@@ -113,8 +114,10 @@ struct Status2Bits
     uint16_t int_wake_up_err    : 1 = 0;
     uint16_t int_tap_err        : 1 = 0;
     uint16_t int_double_tap_err : 1 = 0;
+    uint16_t int_freefall_err   : 1 = 0;
     uint16_t cmd_tap_err        : 1 = 0;
     uint16_t cmd_double_tap_err : 1 = 0;
+    uint16_t cmd_freefall_err   : 1 = 0;
 
     Status2Bits(uint16_t v)
     {
@@ -202,6 +205,8 @@ struct ZbSettingsEntries
     inline static constexpr const char tap_quiet[]             = SETTINGS_ZB_ACCEL_SUBTREE "/tap_quiet";
     inline static constexpr const char tap_priority[]          = SETTINGS_ZB_ACCEL_SUBTREE "/tap_priority";
     inline static constexpr const char double_tap_latency[]    = SETTINGS_ZB_ACCEL_SUBTREE "/double_tap_latency";
+    inline static constexpr const char freefall_threshold[]    = SETTINGS_ZB_ACCEL_SUBTREE "/freefall_threshold";
+    inline static constexpr const char freefall_duration[]     = SETTINGS_ZB_ACCEL_SUBTREE "/freefall_duration";
 };
 
 using settings_mgr = zb::persistent_settings_manager<
@@ -219,6 +224,8 @@ using settings_mgr = zb::persistent_settings_manager<
     ,zb::settings_entry{ZbSettingsEntries::tap_quiet, dev_ctx.settings.tap_quiet}
     ,zb::settings_entry{ZbSettingsEntries::tap_priority, dev_ctx.settings.tap_priority}
     ,zb::settings_entry{ZbSettingsEntries::double_tap_latency, dev_ctx.settings.dbl_tap_latency}
+    ,zb::settings_entry{ZbSettingsEntries::freefall_threshold, dev_ctx.settings.freefall_threshold}
+    ,zb::settings_entry{ZbSettingsEntries::freefall_duration, dev_ctx.settings.freefall_duration}
 >;
 
 //helping constexpr template functions to wrap the change reaction logic into settings-storing logic
@@ -332,11 +339,13 @@ void on_sleep_zb(uint8_t buf);
 void on_wake_up_zb(uint8_t buf);
 void on_tap_zb(uint8_t buf);
 void on_double_tap_zb(uint8_t buf);
+void on_free_fall_zb(uint8_t buf);
 
 static constinit FloodGate<on_sleep_zb> g_SleepGate{};
 static constinit FloodGate<on_wake_up_zb> g_WakeUpGate{};
 static constinit FloodGate<on_tap_zb> g_TapGate{};
 static constinit FloodGate<on_double_tap_zb> g_DoubleTapGate{};
+static constinit FloodGate<on_free_fall_zb> g_FreeFallGate{};
 
 struct accel_val
 {
@@ -441,6 +450,11 @@ static lis2du12_trigger g_TapTrigger{
 static lis2du12_trigger g_DoubleTapTrigger{ 
     .trig={.type = (enum sensor_trigger_type)SENSOR_TRIG_DOUBLE_TAP, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
     .tap_cfg = { .ignore = 1, .x_threshold=0, .y_threshold=0, .z_threshold = 0, .shock = 1, .quiet = 15, .priority = LIS2DU12_XYZ, .dbl_tap_latency = 1}
+};
+
+static lis2du12_trigger g_FreeFallTrigger{ 
+    .trig={.type = (enum sensor_trigger_type)SENSOR_TRIG_FREEFALL, .chan = (enum sensor_channel)LIS2DU12_CHAN_ACCEL_XYZ_EXT}, 
+    .free_fall_cfg = { .threshold = LIS2DU12_156mg, .duration = 0 }
 };
 
 void on_sleep_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
@@ -738,6 +752,50 @@ void on_double_tap(const struct device *dev, const struct sensor_trigger *trigge
 	printk("double tap detected -> postponed\r\n");
 }
 
+void on_free_fall_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
+{
+    auto processingDone = g_FreeFallGate.GetFinishingBlock();
+    int16_t code = status_to_error_code(status);
+    printk("zb: on_free_fall_sent id:%d; status: %d\r\n", cmd_id, -code);
+    Status2Bits s(dev_ctx.status_attr.status2);
+    s.cmd_tap_err = code != 0;
+    if (dev_ctx.status_attr.status2 != s)
+	zb_ep.attr<kAttrStatus2>() = s;
+}
+
+
+void on_free_fall_zb(uint8_t buf)
+{
+    auto processingDone = g_FreeFallGate.GetFinishingBlock();
+    printk("zb: free fall detected\r\n");
+    if (!g_ZigbeeReady)
+    {
+	printk("zb: zigbee stack not ready yet\r\n");
+	return;
+    }
+
+    Status2Bits status(dev_ctx.status_attr.status2);
+    {
+	auto id = zb_ep.send_cmd<kCmdOnFreeFallEvent, {.cb=on_free_fall_sent, .timeout_ms = 5000}>();
+	bool failed_to_send = !id;
+	status.cmd_freefall_err = failed_to_send;
+	if (!failed_to_send)//we've sent cmd. finishing in the cmd handler
+	    processingDone.WaitForOneMore();
+    }
+
+    if (dev_ctx.status_attr.status2 != status)
+	zb_ep.attr<kAttrStatus2>() = status;
+}
+
+void on_free_fall(const struct device *dev, const struct sensor_trigger *trigger)
+{
+    //post on Zigbee thread and run immedieately
+    if (g_FreeFallGate.RequestProcessing())
+	printk("free fall detected -> zb\r\n");
+    else
+	printk("free fall detected -> postponed\r\n");
+}
+
 void reconfigure_interrupts()
 {
     int ret;
@@ -824,6 +882,23 @@ void reconfigure_interrupts()
 	status.int_double_tap_err = ret != 0;
 	if (ret != 0) printk("Failed to remove double-tap trigger\r\n");
 	else printk("Disabled double-tap interrupts\r\n");
+    }
+
+    if (dev_ctx.settings.flags.track_freefall)
+    {
+	g_FreeFallTrigger.free_fall_cfg.threshold = (lis2du12_threshold_t)dev_ctx.settings.freefall_threshold;
+	g_FreeFallTrigger.free_fall_cfg.duration = dev_ctx.settings.freefall_duration;
+
+	ret = sensor_trigger_set(accel_dev, &g_FreeFallTrigger.trig, &on_free_fall);
+	status.int_freefall_err = ret != 0;
+	if (ret != 0) printk("Failed to set freefall trigger\r\n");
+	else printk("Enabled freefall interrupts\r\n");
+    }else
+    {
+	ret = sensor_trigger_set(accel_dev, &g_FreeFallTrigger.trig, nullptr);
+	status.int_freefall_err = ret != 0;
+	if (ret != 0) printk("Failed to remove freefall trigger\r\n");
+	else printk("Disabled freefall interrupts\r\n");
     }
 
     if (dev_ctx.status_attr.status2 != status)
@@ -1126,6 +1201,14 @@ int main(void)
     , zb::set_attr_val_gen_desc_t{
 	zb_ep.attribute_desc<&zb::zb_zcl_accel_settings_t::dbl_tap_latency>(),
 	to_settings_handler<on_interrupt_settings_changed>(ZbSettingsEntries::double_tap_latency)
+      }
+    , zb::set_attr_val_gen_desc_t{
+	zb_ep.attribute_desc<&zb::zb_zcl_accel_settings_t::freefall_threshold>(),
+	to_settings_handler<on_interrupt_settings_changed>(ZbSettingsEntries::freefall_threshold)
+      }
+    , zb::set_attr_val_gen_desc_t{
+	zb_ep.attribute_desc<&zb::zb_zcl_accel_settings_t::freefall_duration>(),
+	to_settings_handler<on_interrupt_settings_changed>(ZbSettingsEntries::freefall_duration)
       }
     >;
     ZB_ZCL_REGISTER_DEVICE_CB(dev_cb);

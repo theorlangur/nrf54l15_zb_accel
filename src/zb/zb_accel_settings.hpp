@@ -18,6 +18,8 @@ namespace zb
     static constexpr uint16_t kZB_ATTR_ID_TAP_QUIET             = 0x0009;
     static constexpr uint16_t kZB_ATTR_ID_TAP_PRIORITY          = 0x000a;
     static constexpr uint16_t kZB_ATTR_ID_DOUBLE_TAP_LATENCY    = 0x000b;
+    static constexpr uint16_t kZB_ATTR_ID_FREEFALL_THRESHOLD    = 0x000c;
+    static constexpr uint16_t kZB_ATTR_ID_FREEFALL_DURATION     = 0x000d;
 
     enum class inactive_odr_t: uint8_t
     {
@@ -31,14 +33,15 @@ namespace zb
     {
         union{
             struct{
-                uint32_t enable_x      : 1 = 0;
-                uint32_t enable_y      : 1 = 0;
-                uint32_t enable_z      : 1 = 1;
-                uint32_t track_wake_up : 1 = 0;
-                uint32_t track_sleep   : 1 = 0;
-                uint32_t track_flip    : 1 = 1;
-                uint32_t track_tap     : 1 = 0;
-                uint32_t track_dbl_tap : 1 = 0;
+                uint32_t enable_x       : 1 = 0;
+                uint32_t enable_y       : 1 = 0;
+                uint32_t enable_z       : 1 = 1;
+                uint32_t track_wake_up  : 1 = 0;
+                uint32_t track_sleep    : 1 = 0;
+                uint32_t track_flip     : 1 = 1;
+                uint32_t track_tap      : 1 = 0;
+                uint32_t track_dbl_tap  : 1 = 0;
+                uint32_t track_freefall : 1 = 0;
             }flags{};
             uint32_t flags_dw;
         };
@@ -53,6 +56,8 @@ namespace zb
         uint8_t tap_quiet = 0;
         uint8_t tap_priority = 0;
         uint8_t dbl_tap_latency = 0;
+        uint8_t freefall_threshold = 0;
+        uint8_t freefall_duration = 0;
     };
 
     template<>
@@ -75,6 +80,8 @@ namespace zb
                     ,attribute_t{.m = &T::tap_quiet           ,.id = kZB_ATTR_ID_TAP_QUIET             , .a=Access::RW}
                     ,attribute_t{.m = &T::tap_priority        ,.id = kZB_ATTR_ID_TAP_PRIORITY          , .a=Access::RW, .type=Type::E8}
                     ,attribute_t{.m = &T::dbl_tap_latency     ,.id = kZB_ATTR_ID_DOUBLE_TAP_LATENCY    , .a=Access::RW}
+                    ,attribute_t{.m = &T::freefall_threshold  ,.id = kZB_ATTR_ID_FREEFALL_THRESHOLD    , .a=Access::RW, .type=Type::E8}
+                    ,attribute_t{.m = &T::freefall_duration   ,.id = kZB_ATTR_ID_FREEFALL_DURATION     , .a=Access::RW}
                 >{}
             >{};
         }

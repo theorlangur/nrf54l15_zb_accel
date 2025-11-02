@@ -11,6 +11,7 @@ namespace zb
     static constexpr uint8_t kZB_ZCL_ACCEL_CMD_FLIP_EVENT       = 102;
     static constexpr uint8_t kZB_ZCL_ACCEL_CMD_TAP_EVENT        = 103;
     static constexpr uint8_t kZB_ZCL_ACCEL_CMD_DOUBLE_TAP_EVENT = 104;
+    static constexpr uint8_t kZB_ZCL_ACCEL_CMD_FREEFALL_EVENT   = 105;
 
     struct MeasuredAccelValues
     {
@@ -48,6 +49,7 @@ namespace zb
         [[no_unique_address]]cmd_pool_t<kZB_ZCL_ACCEL_CMD_FLIP_EVENT      , cfg.on_event_pool_size, flip_event_arg_t   > on_flip;
         [[no_unique_address]]cmd_pool_t<kZB_ZCL_ACCEL_CMD_TAP_EVENT       , cfg.on_event_pool_size                     > on_tap;
         [[no_unique_address]]cmd_pool_t<kZB_ZCL_ACCEL_CMD_DOUBLE_TAP_EVENT, cfg.on_event_pool_size                     > on_double_tap;
+        [[no_unique_address]]cmd_pool_t<kZB_ZCL_ACCEL_CMD_FREEFALL_EVENT  , cfg.on_event_pool_size                     > on_free_fall;
     };
 
     template<accel_config_t cfg> struct zcl_description_t<zb_zcl_accel_basic_t<cfg>> {
@@ -67,6 +69,7 @@ namespace zb
                      ,&T::on_flip
                      ,&T::on_tap
                      ,&T::on_double_tap
+                     ,&T::on_free_fall
                 >{}
             >{};
         }
