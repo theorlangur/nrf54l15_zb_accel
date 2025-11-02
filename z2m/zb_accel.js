@@ -135,6 +135,17 @@ const orlangurAccelExtended = {
             "ZXY"  : 6,
         };
 
+        const freefall_threshold = {
+            "156mg"       : 0,
+            "219mg"       : 1,
+            "250mg"       : 2,
+            "312mg"       : 3,
+            "344mg"       : 4,
+            "406mg"       : 5,
+            "469mg"       : 6,
+            "500mg"       : 7,
+        };
+
         const exposes = [
             e.binary('enable_x', ea.ALL, 1, 0).withCategory('config').withDescription('Sensing activity on X'),
             e.binary('enable_y', ea.ALL, 1, 0).withCategory('config').withDescription('Sensing activity on Y'),
@@ -192,6 +203,14 @@ const orlangurAccelExtended = {
                 .withCategory('config')
                 .withDescription('Double Tap Latency')
                 .withLabel('Double Tap Latency'),
+            e.enum('freefall_threshold', ea.ALL, Object.keys(freefall_threshold))
+                .withCategory('config')
+                .withDescription('FreeFall Threshold')
+                .withLabel('FreeFall Threshold'),
+            e.numeric('freefall_duration', ea.ALL)
+                .withCategory('config')
+                .withDescription('FreeFall Duration')
+                .withLabel('FreeFall Duration'),
         ];
 
         const cfg_bits = {
@@ -203,6 +222,7 @@ const orlangurAccelExtended = {
             track_flip     : 5,
             track_tap      : 6,
             track_dbl_tap  : 7,
+            track_freefall : 8,
         };
 
         const fromZigbee = [
@@ -217,7 +237,7 @@ const orlangurAccelExtended = {
                     {
                         const buffer = Buffer.alloc(1);
                         buffer.writeUInt8(data['flags']);
-                        const b0 = buffer.readUInt8(0);
+                        const b0 = buffer.readUInt16LE(0);
                         const set_cfg = (name, b0) => { result[name] = (b0 >> cfg_bits[name]) & 1; };
                         set_cfg('enable_x', b0);
                         set_cfg('enable_y', b0);
@@ -227,6 +247,7 @@ const orlangurAccelExtended = {
                         set_cfg('track_flip', b0);
                         set_cfg('track_tap', b0);
                         set_cfg('track_dbl_tap', b0);
+                        set_cfg('track_freefall', b0);
                     }
 
                     if (data['wake_sleep_threshold'] !== undefined) result['wake_sleep_threshold'] = data['wake_sleep_threshold'];
@@ -237,6 +258,7 @@ const orlangurAccelExtended = {
                     if (data['tap_shock'] !== undefined) result['tap_shock'] = data['tap_shock'];
                     if (data['tap_quiet'] !== undefined) result['tap_quiet'] = data['tap_quiet'];
                     if (data['double_tap_latency'] !== undefined) result['double_tap_latency'] = data['double_tap_latency'];
+                    if (data['freefall_duration'] !== undefined) result['freefall_duration'] = data['freefall_duration'];
 
                     if (data['sleep_odr'] !== undefined)
                     {
@@ -259,6 +281,13 @@ const orlangurAccelExtended = {
                         if (entry)
                             result['tap_priority'] = entry[0];//key
                     }
+                    if (data['freefall_threshold'] !== undefined)
+                    {
+                        const v = data['freefall_threshold']
+                        const entry = Object.entries(tap_priority).find(([_,val])=> val == v)
+                        if (entry)
+                            result['freefall_threshold'] = entry[0];//key
+                    }
 
                     if (Object.keys(result).length == 0) 
                         return;
@@ -270,7 +299,7 @@ const orlangurAccelExtended = {
 
         const toZigbee = [
             {
-                key: ['enable_x', 'enable_y', 'enable_z', 'track_wake_up', 'track_sleep', 'track_flip', 'track_tap', 'track_dbl_tap'],
+                key: ['enable_x', 'enable_y', 'enable_z', 'track_wake_up', 'track_sleep', 'track_flip', 'track_tap', 'track_dbl_tap', 'track_freefall'],
                 convertSet: async (entity, key, value, meta) => {
                     //read current state
                     const readResult = await entity.read('customConfig', ['flags']);
@@ -292,6 +321,7 @@ const orlangurAccelExtended = {
                     , 'tap_shock'
                     , 'tap_quiet'
                     , 'double_tap_latency'
+                    , 'freefall_duration'
                 ],
                 convertSet: async (entity, key, value, meta) => {
                     await entity.write('customConfig', {[key]: value});
@@ -331,6 +361,16 @@ const orlangurAccelExtended = {
                     await entity.read('customConfig', [key]);
                 },
             }
+            ,{
+                key: ['freefall_threshold'],
+                convertSet: async (entity, key, value, meta) => {
+                    await entity.write('customConfig', {[key]: freefall_threshold[value]});
+                    return {state: {[key]: value}};
+                },
+                convertGet: async (entity, key, meta) => {
+                    await entity.read('customConfig', [key]);
+                },
+            }
         ];
 
         return {
@@ -342,7 +382,7 @@ const orlangurAccelExtended = {
     },
     acceleration: () => {
         const flip_enums = ['pos', 'neg'];
-        const actions = ["wake_up", "sleep", "flip", "tap", "double_tap"];
+        const actions = ["wake_up", "sleep", "flip", "tap", "double_tap", "freefall"];
         const exposes = [
             e.numeric('X', ea.STATE_GET)
                             .withUnit('g')
@@ -441,7 +481,7 @@ const orlangurAccelExtended = {
             },
             {
                 cluster: 'customAccel',
-                type: ['commandOn_tap', 'commandOn_double_tap'],
+                type: ['commandOn_tap', 'commandOn_double_tap', 'commandOn_freefall'],
                 convert: (model, msg, publish, options, meta) => {
                     const act = msg.type.replace("commandOn_", "")
                     return { action: act };
@@ -510,6 +550,10 @@ const definition = {
                     ID: 104,
                     parameters: []
                 },
+                on_freefall: {
+                    ID: 105,
+                    parameters: []
+                },
             },
             commandsResponse: {}
         }),
@@ -528,6 +572,8 @@ const definition = {
                 tap_quiet:            {ID: 0x0009, type: Zcl.DataType.UINT8},
                 tap_priority:         {ID: 0x000a, type: Zcl.DataType.ENUM8},
                 double_tap_latency:   {ID: 0x000b, type: Zcl.DataType.UINT8},
+                freefall_threshold:   {ID: 0x000c, type: Zcl.DataType.ENUM8},
+                freefall_duration :   {ID: 0x000d, type: Zcl.DataType.UINT8},
             },
             commands: {},
             commandsResponse: {}
@@ -569,6 +615,8 @@ const definition = {
             , 'tap_shock' 
             , 'tap_quiet' 
             , 'double_tap_latency' 
+            , 'freefall_threshold' 
+            , 'freefall_duration' 
         ]);
         await endpoint.read('customStatus', [ 'status1', 'status2', 'status3']);
         await endpoint.configureReporting('customAccel', [
