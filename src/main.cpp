@@ -99,14 +99,30 @@ constexpr auto kAttrStatus1 = &zb::zb_zcl_status_t::status1;
 constexpr auto kAttrStatus2 = &zb::zb_zcl_status_t::status2;
 constexpr auto kAttrStatus3 = &zb::zb_zcl_status_t::status3;
 
-constexpr int kSleepSendStatusBit1 = 0;
-constexpr int kSleepSendStatusCodeOffset = 1;
-constexpr int kFlipSendStatusBit1 = 5;
-constexpr int kFlipSendStatusCodeOffset = 6;
-constexpr int kWakeUpSendStatusBit1 = 10;
-constexpr int kWakeUpSendStatusCodeOffset = 11;
+struct Status3Bits
+{
+    uint16_t send_sleep_err    : 1 = 0;
+    uint16_t cmd_sleep_status  : 4 = 0;
+    uint16_t send_flip_err     : 1 = 0;
+    uint16_t cmd_flip_status   : 4 = 0;
+    uint16_t send_wakeup_err   : 1 = 0;
+    uint16_t cmd_wakeup_status : 4 = 0;
+    uint16_t unused            : 1 = 0;
 
-constexpr int kStatusCodeSize = 4;
+    Status3Bits(uint16_t v)
+    {
+	*reinterpret_cast<uint16_t*>(this) = v;
+    }
+
+    Status3Bits& operator=(uint16_t v)
+    {
+	*reinterpret_cast<uint16_t*>(this) = v;
+	return *this;
+    }
+
+    operator uint16_t () const { return *reinterpret_cast<const uint16_t*>(this); }
+};
+static_assert(sizeof(Status3Bits) == sizeof(uint16_t));
 
 struct Status2Bits
 {
@@ -132,6 +148,7 @@ struct Status2Bits
 
     operator uint16_t () const { return *reinterpret_cast<const uint16_t*>(this); }
 };
+static_assert(sizeof(Status2Bits) == sizeof(uint16_t));
 
 /* Zigbee device application context storage. */
 static constinit device_ctx_t dev_ctx{
@@ -463,13 +480,8 @@ void on_sleep_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status
     int16_t code = status_to_error_code(status);
     printk("zb: on_sleep_cmd_sent id:%d; status: %d\r\n", cmd_id, -code);
 
-    int16_t newStatus3 = dev_ctx.status_attr.status3;
-    constexpr int16_t kMask = (int16_t(1) << kStatusCodeSize) - 1;
-    if (code != 0)
-	newStatus3 = (newStatus3 & (~(kMask << kSleepSendStatusCodeOffset))) | (code << kSleepSendStatusCodeOffset);
-    else
-	newStatus3 &= ~(kMask << kSleepSendStatusCodeOffset);
-
+    Status3Bits newStatus3 = dev_ctx.status_attr.status3;
+    newStatus3.cmd_sleep_status = code;
     if (newStatus3 != dev_ctx.status_attr.status3)
 	zb_ep.attr<kAttrStatus3>() = newStatus3;
 
@@ -486,12 +498,8 @@ void on_flip_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *status)
     int16_t code = status_to_error_code(status);
     printk("zb: on_flip_cmd_sent id:%d; status: %d\r\n", cmd_id, -code);
 
-    int16_t newStatus3 = dev_ctx.status_attr.status3;
-    constexpr int16_t kMask = (int16_t(1) << kStatusCodeSize) - 1;
-    if (code != 0)
-	newStatus3 = (newStatus3 & (~(kMask << kFlipSendStatusCodeOffset))) | (code << kFlipSendStatusCodeOffset);
-    else
-	newStatus3 &= ~(kMask << kFlipSendStatusCodeOffset);
+    Status3Bits newStatus3 = dev_ctx.status_attr.status3;
+    newStatus3.cmd_flip_status = code;
 
     if (newStatus3 != dev_ctx.status_attr.status3)
 	zb_ep.attr<kAttrStatus3>() = newStatus3;
@@ -509,12 +517,8 @@ void on_wake_up_cmd_sent(zb::cmd_id_t cmd_id, zb_zcl_command_send_status_t *stat
     int16_t code = status_to_error_code(status);
     printk("zb: on_wake_up_cmd_sent id:%d; status: %d\r\n", cmd_id, -code);
 
-    int16_t newStatus3 = dev_ctx.status_attr.status3;
-    constexpr int16_t kMask = (int16_t(1) << kStatusCodeSize) - 1;
-    if (code != 0)
-	newStatus3 = (newStatus3 & (~(kMask << kWakeUpSendStatusCodeOffset))) | (code << kWakeUpSendStatusCodeOffset);
-    else
-	newStatus3 &= ~(kMask << kWakeUpSendStatusCodeOffset);
+    Status3Bits newStatus3 = dev_ctx.status_attr.status3;
+    newStatus3.cmd_wakeup_status = code;
 
     if (newStatus3 != dev_ctx.status_attr.status3)
 	zb_ep.attr<kAttrStatus3>() = newStatus3;
@@ -552,16 +556,13 @@ void on_sleep_zb(uint8_t buf)
 	zb_ep.dump_info<kCmdOnFlipEvent, kCmdOnSleepEvent, kCmdOnWakeUpEvent>();
     }
 
-    int16_t newStatus3 = dev_ctx.status_attr.status3;
+    Status3Bits newStatus3 = dev_ctx.status_attr.status3;
     if (dev_ctx.settings.flags.track_sleep)
     {
 	auto id = zb_ep.send_cmd<kCmdOnSleepEvent, {.cb=on_sleep_cmd_sent, .timeout_ms = 5000}>(vals);
 	bool failed_to_send = !id;
-	if (((newStatus3 & kSleepSendStatusBit1) != 0) != failed_to_send)
-	{
-	    constexpr int16_t kMask = int16_t(1) << kSleepSendStatusBit1;
-	    newStatus3 = (newStatus3 & ~kMask) | (failed_to_send * kMask);
-	}
+	newStatus3.send_sleep_err = failed_to_send;
+
 	if (!failed_to_send)
 	{
 	    zb_ep.attr<kAttrStatus1>() = *id;//last command id sent
@@ -575,11 +576,7 @@ void on_sleep_zb(uint8_t buf)
 	{
 	    auto id = zb_ep.send_cmd<kCmdOnFlipEvent, {.cb=on_flip_cmd_sent, .timeout_ms = 5000}>(flipRes);
 	    bool failed_to_send = !id;
-	    if (((newStatus3 & kFlipSendStatusBit1) != 0) != failed_to_send)
-	    {
-		constexpr int16_t kMask = int16_t(1) << kFlipSendStatusBit1;
-		newStatus3 = (newStatus3 & ~kMask) | (failed_to_send * kMask);
-	    }
+	    newStatus3.send_flip_err = failed_to_send;
 	    if (!failed_to_send)
 	    {
 		zb_ep.attr<kAttrStatus1>() = *id;//last command id sent
@@ -633,16 +630,11 @@ void on_wake_up_zb(uint8_t buf)
     zb_ep.attr<kAttrY>() = y;
     zb_ep.attr<kAttrZ>() = z;
 
-    int16_t newStatus3 = dev_ctx.status_attr.status3;
+    Status3Bits newStatus3 = dev_ctx.status_attr.status3;
     {
 	auto id = zb_ep.send_cmd<kCmdOnWakeUpEvent, {.cb=on_wake_up_cmd_sent, .timeout_ms = 5000}>(vals);
 	bool failed_to_send = !id;
-	if (((newStatus3 & kWakeUpSendStatusBit1) != 0) != failed_to_send)
-	{
-	    constexpr int16_t kMask = int16_t(1) << kWakeUpSendStatusBit1;
-	    newStatus3 = (newStatus3 & ~kMask) | (failed_to_send * kMask);
-	}
-
+	newStatus3.send_wakeup_err = failed_to_send;
 	if (!failed_to_send)//we've sent cmd. finishing in the cmd handler
 	{
 	    zb_ep.attr<kAttrStatus1>() = *id;//last command id sent
@@ -976,7 +968,8 @@ zb::ZbAlarm g_EnterLowPowerLongPollMode;
 
 void on_check_in(uint8_t param)
 {
-    printk("on_check_in: %d; current check-in interval: %dqs (%.2fs)\r\n", param, dev_ctx.poll_ctrl.check_in_interval, float(dev_ctx.poll_ctrl.check_in_interval) / float(4));
+    if constexpr (kCmdDebug)
+	printk("on_check_in: %d; current check-in interval: %dqs (%.2fs)\r\n", param, dev_ctx.poll_ctrl.check_in_interval, float(dev_ctx.poll_ctrl.check_in_interval) / float(4));
     update_battery_state_zb(param);
 }
 
