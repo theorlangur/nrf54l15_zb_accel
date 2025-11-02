@@ -549,7 +549,10 @@ void on_sleep_zb(uint8_t buf)
 	    newStatus3 = (newStatus3 & ~kMask) | (failed_to_send * kMask);
 	}
 	if (!failed_to_send)
+	{
+	    zb_ep.attr<kAttrStatus1>() = *id;//last command id sent
 	    processingDone.WaitForOneMore();
+	}
     }
     if (dev_ctx.settings.flags.track_flip)
     {
@@ -564,7 +567,10 @@ void on_sleep_zb(uint8_t buf)
 		newStatus3 = (newStatus3 & ~kMask) | (failed_to_send * kMask);
 	    }
 	    if (!failed_to_send)
+	    {
+		zb_ep.attr<kAttrStatus1>() = *id;//last command id sent
 		processingDone.WaitForOneMore();
+	    }
 	}
     }
 
@@ -624,7 +630,10 @@ void on_wake_up_zb(uint8_t buf)
 	}
 
 	if (!failed_to_send)//we've sent cmd. finishing in the cmd handler
+	{
+	    zb_ep.attr<kAttrStatus1>() = *id;//last command id sent
 	    processingDone.WaitForOneMore();
+	}
     }
 
     if (newStatus3 != dev_ctx.status_attr.status3)
@@ -678,7 +687,10 @@ void on_tap_zb(uint8_t buf)
 	bool failed_to_send = !id;
 	status.cmd_tap_err = failed_to_send;
 	if (!failed_to_send)//we've sent cmd. finishing in the cmd handler
+	{
+	    zb_ep.attr<kAttrStatus1>() = *id;//last command id sent
 	    processingDone.WaitForOneMore();
+	}
     }
 
     if (dev_ctx.status_attr.status2 != status)
@@ -829,12 +841,12 @@ void udpate_accel_values(uint8_t)
 	zb_ep.attr<kAttrX>() = float(acc.x.val1) + float(acc.x.val2) / 1000'000.f;
 	zb_ep.attr<kAttrY>() = float(acc.y.val1) + float(acc.y.val2) / 1000'000.f;
 	zb_ep.attr<kAttrZ>() = float(acc.z.val1) + float(acc.z.val2) / 1000'000.f;
-	zb_ep.attr<kAttrStatus1>() = 0;
+	//zb_ep.attr<kAttrStatus1>() = 0;
 	g_Flip.CheckFlip(acc);//providing initial values
 	printk("Accel X: %d; Y: %d; Z: %d;\r\n", acc.x.val1, acc.y.val1, acc.z.val1);
     }else
     {
-	zb_ep.attr<kAttrStatus1>() = -1;
+	//zb_ep.attr<kAttrStatus1>() = -1;
     }
 }
 
