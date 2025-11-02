@@ -155,6 +155,7 @@ const orlangurAccelExtended = {
             e.binary('track_flip', ea.ALL, 1, 0).withCategory('config').withDescription('Track flip events'),
             e.binary('track_tap', ea.ALL, 1, 0).withCategory('config').withDescription('Track tap events'),
             e.binary('track_dbl_tap', ea.ALL, 1, 0).withCategory('config').withDescription('Track double tap events'),
+            e.binary('track_freefall', ea.ALL, 1, 0).withCategory('config').withDescription('Track free fall events'),
             e.numeric('wake_sleep_threshold', ea.ALL)
                 .withCategory('config')
                 // .withValueMin(0)
@@ -235,8 +236,8 @@ const orlangurAccelExtended = {
 
                     if (data['flags'] !== undefined) 
                     {
-                        const buffer = Buffer.alloc(1);
-                        buffer.writeUInt8(data['flags']);
+                        const buffer = Buffer.alloc(2);
+                        buffer.writeUInt16LE(data['flags']);
                         const b0 = buffer.readUInt16LE(0);
                         const set_cfg = (name, b0) => { result[name] = (b0 >> cfg_bits[name]) & 1; };
                         set_cfg('enable_x', b0);
